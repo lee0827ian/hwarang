@@ -1,722 +1,445 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>축구팀 관리 시스템</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-        .icon { display: inline-block; width: 1rem; height: 1rem; vertical-align: middle; }
-        .icon-lg { width: 2rem; height: 2rem; }
-        .dragging { opacity: 0.5; }
-        .drag-over { background-color: rgba(59, 130, 246, 0.1); }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>축구팀 관리 시스템</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { margin:0; padding:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
+    .icon { display:inline-block; width:1rem; height:1rem; vertical-align:middle; }
+    .icon-lg { width:2rem; height:2rem; }
+  </style>
 </head>
 <body>
-    <div id="root"></div>
+<div id="root"></div>
 
-    <script>
-        // 앱 상태
-        let state = {
-            activeTab: "dashboard",
-            players: [],
-            matches: [],
-            formation: { gk: [], def: [], dmf: [], cmf: [], amf: [], fw: [] },
-            newMatch: { opponent: "", location: "", date: "", result: "", goals: 0, conceded: 0 },
-            newPlayer: { name: "", position: "FW" },
-            draggedPlayer: null,
-            saveStatus: ""
-        };
+<script>
+/* -------------------- 앱 상태 -------------------- */
+let state = {
+  activeTab: "players",           // 처음에 선수관리 탭으로 열리게
+  players: [],
+  matches: [],
+  formation: { gk: [], def: [], dmf: [], cmf: [], amf: [], fw: [] },
+  newMatch: { opponent:"", location:"", date:"", result:"", goals:0, conceded:0 },
+  newPlayer: { name:"", position:"FW" },
+  draggedPlayer: null,
+  saveStatus: "",
+  playerSearch: ""                // 선수 검색어
+};
 
-        // 초기 데이터
-        const initialPlayers = [
-            { id: 1, name: "김철수", position: "FW", goals: 5, assists: 3, attendance: 8, isPresent: false },
-            { id: 2, name: "이영희", position: "MF", goals: 2, assists: 6, attendance: 9, isPresent: false },
-            { id: 3, name: "박민수", position: "DF", goals: 1, assists: 1, attendance: 7, isPresent: false },
-            { id: 4, name: "정수현", position: "GK", goals: 0, assists: 0, attendance: 10, isPresent: false },
-            { id: 5, name: "최윤석", position: "MF", goals: 3, assists: 4, attendance: 6, isPresent: false },
-            { id: 6, name: "한지민", position: "DF", goals: 0, assists: 2, attendance: 8, isPresent: false }
-        ];
+/* -------------------- 초기 데이터 -------------------- */
+const initialPlayers = [
+  { id: 1, name: "심재양", position:"MF", goals:0, assists:0, attendance:0, isPresent:false },
+  { id: 2, name: "이정호", position:"FW", goals:0, assists:0, attendance:0, isPresent:false },
+  { id: 3, name: "하민호", position:"DF", goals:0, assists:0, attendance:0, isPresent:false },
+  { id: 4, name: "하재형", position:"GK", goals:0, assists:0, attendance:0, isPresent:false }
+];
 
-        const initialMatches = [
-            { id: 1, opponent: "FC 레드", location: "잠실운동장", date: "2024-08-15", result: "W", score: "3-1", goals: 3, conceded: 1 },
-            { id: 2, opponent: "블루 유나이티드", location: "월드컵경기장", date: "2024-08-10", result: "L", score: "1-2", goals: 1, conceded: 2 },
-            { id: 3, opponent: "그린 FC", location: "올림픽공원", date: "2024-08-05", result: "D", score: "2-2", goals: 2, conceded: 2 }
-        ];
+const initialMatches = [
+  { id:1, opponent:"JK FC", location:"항공대학교", date:"2024-08-15", result:"W", score:"3-1", goals:3, conceded:1 },
+  { id:2, opponent:"블루 유나이티드", location:"월드컵경기장", date:"2024-08-10", result:"L", score:"1-2", goals:1, conceded:2 }
+];
 
-        // 아이콘 SVG
-        const icons = {
-            plus: '<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>',
-            users: '<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m3 4.197a4 4 0 105.196-1.557M15 6.306a4 4 0 000-5.292v5.292z"></path></svg>',
-            trophy: '<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15l-2 5L7 17l-4 1 1-4-3-3h6l2-7 2 7h6l-3 3 1 4-4-1-3 3-2-5z"></path></svg>',
-            calendar: '<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>',
-            barChart: '<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>',
-            target: '<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18c3.314 0 6-2.686 6-6s-2.686-6-6-6-6 2.686-6 6 2.686 6 6 6z"></path></svg>',
-            shield: '<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>',
-            download: '<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>',
-            upload: '<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>',
-            save: '<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 0V6a2 2 0 00-2-2H9a2 2 0 00-2 2v1m1 0h4m-4 0a1 1 0 100 2h4a1 1 0 100-2m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2"></path></svg>'
-        };
+/* -------------------- 아이콘 (간단 SVG) -------------------- */
+const icons = {
+  plus:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>',
+  users:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2m14 0h3v-2a7 7 0 00-7-7M9 7a4 4 0 118 0 4 4 0 01-8 0z"/></svg>',
+  calendar:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12"/></svg>',
+  barChart:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19V10m-4 9V7m8 12v-4m4 4V4"/></svg>',
+  target:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><circle cx="12" cy="12" r="5" stroke-width="2"/></svg>',
+  shield:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 22s8-3 8-10V6l-8-4-8 4v6c0 7 8 10 8 10z"/></svg>',
+  save:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h3"/></svg>',
+  upload:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M8 12l4-4 4 4M12 8v8"/></svg>',
+  download:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M8 12l4 4 4-4M12 16V4"/></svg>'
+};
 
-        // 유틸리티 함수
-        function render() {
-            document.getElementById('root').innerHTML = createApp();
-            attachEventListeners();
+/* -------------------- 렌더/상태 -------------------- */
+function render(){ document.getElementById('root').innerHTML = createApp(); }
+function setState(newState){ state = {...state, ...newState}; render(); autosave(); }
+
+/* -------------------- 저장/로드 -------------------- */
+function loadData(){
+  const saved = localStorage.getItem('soccerTeamData');
+  if(saved){
+    try{
+      const data = JSON.parse(saved);
+      setState({ players: data.players || initialPlayers, matches: data.matches || initialMatches, saveStatus:"✓ 저장된 데이터 불러옴" });
+      setTimeout(()=>setState({saveStatus:""}),2000);
+      return;
+    }catch{}
+  }
+  setState({ players: initialPlayers, matches: initialMatches });
+}
+function autosave(){
+  const data = { players: state.players, matches: state.matches, savedAt: new Date().toISOString() };
+  localStorage.setItem('soccerTeamData', JSON.stringify(data));
+}
+function saveData(){ autosave(); setState({saveStatus:"✓ 저장 완료"}); setTimeout(()=>setState({saveStatus:""}),2000); }
+function downloadBackup(){
+  const data = { players: state.players, matches: state.matches, exportedAt: new Date().toISOString(), version:"1.1" };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `hwarang-backup-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  setState({saveStatus:"✓ 백업 파일 다운로드됨"}); setTimeout(()=>setState({saveStatus:""}),2000);
+}
+
+/* -------------------- 구성원 JSON 불러오기 -------------------- */
+/* 이름 정리: 앞의 '화랑', '화랑_', '화랑-' 등 제거 + 이모지/특수문자 과도한 것 정리 */
+function sanitizeName(raw){
+  if(!raw) return "";
+  let s = String(raw).trim();
+  s = s.replace(/^화랑[\s_\-]?/i, "");     // 선행 접두어 제거
+  s = s.replace(/\s{2,}/g, " ");          // 중복 공백 정리
+  // 이모지나 불필요 특수문자 대부분 제거(한글/영문/숫자/공백/._-만 허용)
+  s = s.replace(/[^\p{L}\p{N}\s._-]/gu, "");
+  return s.trim();
+}
+
+/* 파일 선택 핸들러: ["이름", ...] 또는 {members:[...]} 모두 지원 */
+function importMembersFile(ev){
+  const file = ev.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try{
+      const json = JSON.parse(e.target.result);
+      const arr = Array.isArray(json) ? json : Array.isArray(json.members) ? json.members : null;
+      if(!arr){ alert("지원 형식이 아닙니다. 배열이나 {members:[...]} 형태로 주세요."); return; }
+      const cleaned = arr.map(sanitizeName).filter(n=>n);
+      // 기존 선수와 이름 기준 병합(있으면 유지, 없으면 추가)
+      const existingByName = new Map(state.players.map(p=>[p.name,p]));
+      const merged = [];
+      cleaned.forEach((name)=>{
+        if(existingByName.has(name)){ merged.push(existingByName.get(name)); existingByName.delete(name); }
+        else{
+          merged.push({ id: Date.now()+Math.random(), name, position:"MF", goals:0, assists:0, attendance:0, isPresent:false });
         }
+      });
+      // 기존에 남은(명단에서 빠진) 선수들 뒤에 유지할지 여부—여기선 유지
+      existingByName.forEach(v=>merged.push(v));
 
-        function setState(newState) {
-            state = { ...state, ...newState };
-            render();
-        }
+      setState({ players: merged, saveStatus:"✓ 구성원 JSON 반영됨" });
+      setTimeout(()=>setState({saveStatus:""}),2000);
+    }catch(err){
+      alert("JSON 파싱 실패: "+err.message);
+    } finally { ev.target.value=""; }
+  };
+  reader.readAsText(file);
+}
 
-        function loadData() {
-            const savedData = localStorage.getItem("soccerTeamData");
-            if (savedData) {
-                try {
-                    const data = JSON.parse(savedData);
-                    setState({
-                        players: data.players || initialPlayers,
-                        matches: data.matches || initialMatches,
-                        saveStatus: "✓ 저장된 데이터 불러옴"
-                    });
-                    setTimeout(() => setState({ saveStatus: "" }), 3000);
-                } catch (error) {
-                    setState({ players: initialPlayers, matches: initialMatches });
-                }
-            } else {
-                setState({ players: initialPlayers, matches: initialMatches });
-            }
-        }
+/* -------------------- 선수/출석 -------------------- */
+function addPlayer(){
+  const name = sanitizeName(state.newPlayer.name);
+  if(!name) return;
+  setState({
+    players: [...state.players, { id:Date.now(), name, position: state.newPlayer.position || "FW", goals:0, assists:0, attendance:0, isPresent:false }],
+    newPlayer: { name:"", position:"FW" }
+  });
+}
+function toggleAttendance(id){
+  setState({ players: state.players.map(p=> p.id===id ? {...p, isPresent:!p.isPresent} : p ) });
+}
+function clearAllAttendance(){ setState({ players: state.players.map(p=>({...p, isPresent:false})) }); }
+function setActiveTab(tab){ setState({activeTab:tab}); }
+function updateNewPlayer(field, value){ setState({ newPlayer: { ...state.newPlayer, [field]: value } }); }
+function updateNewMatch(field, value){ setState({ newMatch: { ...state.newMatch, [field]: value } }); }
 
-        function saveData() {
-            const data = { 
-                players: state.players, 
-                matches: state.matches, 
-                savedAt: new Date().toISOString() 
-            };
-            localStorage.setItem("soccerTeamData", JSON.stringify(data));
-            setState({ saveStatus: "✓ 저장 완료" });
-            setTimeout(() => setState({ saveStatus: "" }), 3000);
-        }
+/* -------------------- 경기 -------------------- */
+function addMatch(){
+  const m = state.newMatch;
+  if(!(m.opponent && m.location && m.date)) return;
+  const score = `${m.goals}-${m.conceded}`;
+  const newM = { ...m, id: Date.now(), score, goals: parseInt(m.goals)||0, conceded: parseInt(m.conceded)||0 };
+  setState({ matches:[...state.matches, newM], newMatch:{opponent:"",location:"",date:"",result:"",goals:0,conceded:0} });
+}
 
-        function autoSave() {
-            if (state.players.length > 0 || state.matches.length > 0) {
-                const data = {
-                    players: state.players,
-                    matches: state.matches,
-                    savedAt: new Date().toISOString()
-                };
-                localStorage.setItem("soccerTeamData", JSON.stringify(data));
-            }
-        }
+/* -------------------- 통계 -------------------- */
+function teamStats(){
+  const ms = state.matches;
+  const matches = ms.length;
+  const wins = ms.filter(m=>m.result==="W").length;
+  const draws = ms.filter(m=>m.result==="D").length;
+  const losses = ms.filter(m=>m.result==="L").length;
+  const goalsFor = ms.reduce((s,m)=>s+m.goals,0);
+  const goalsAgainst = ms.reduce((s,m)=>s+m.conceded,0);
+  const cleanSheets = ms.filter(m=>m.conceded===0).length;
+  return {
+    matches, wins, draws, losses, goalsFor, goalsAgainst, cleanSheets,
+    winRate: matches?((wins/matches)*100).toFixed(1):0,
+    avgGoalsFor: matches?(goalsFor/matches).toFixed(2):0,
+    avgGoalsAgainst: matches?(goalsAgainst/matches).toFixed(2):0,
+    cleanSheetRate: matches?((cleanSheets/matches)*100).toFixed(1):0
+  };
+}
 
-        function downloadBackup() {
-            const data = {
-                players: state.players,
-                matches: state.matches,
-                exportedAt: new Date().toISOString(),
-                version: "1.0"
-            };
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `soccer-team-backup-${new Date().toISOString().slice(0, 10)}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            setState({ saveStatus: "✓ 백업 파일 다운로드됨" });
-            setTimeout(() => setState({ saveStatus: "" }), 3000);
-        }
+/* -------------------- UI 생성 -------------------- */
+function createApp(){
+  return `
+  <div class="min-h-screen bg-gray-50">
+    ${createNav()}
+    <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      ${state.activeTab==='dashboard'? createDashboard():''}
+      ${state.activeTab==='matches'? createMatches():''}
+      ${state.activeTab==='formation'? createFormation():''}
+      ${state.activeTab==='players'? createPlayers():''}
+    </main>
+  </div>`;
+}
 
-        function uploadBackup(event) {
-            const file = event.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    try {
-                        const data = JSON.parse(e.target.result);
-                        if (data.players && data.matches) {
-                            setState({ 
-                                players: data.players, 
-                                matches: data.matches,
-                                saveStatus: "✓ 백업 데이터 복원됨"
-                            });
-                            setTimeout(() => setState({ saveStatus: "" }), 3000);
-                        } else {
-                            alert("올바른 백업 파일이 아닙니다.");
-                        }
-                    } catch (error) {
-                        alert("파일 읽기 실패: " + error.message);
-                    }
-                };
-                reader.readAsText(file);
-            }
-        }
+function createNav(){
+  const tabs = [
+    {id:'dashboard', name:'대시보드', icon:'barChart'},
+    {id:'matches', name:'경기 기록', icon:'calendar'},
+    {id:'formation', name:'포메이션', icon:'target'},
+    {id:'players', name:'선수 관리', icon:'users'}
+  ];
+  return `
+  <nav class="bg-white shadow-sm border-b">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex space-x-8">
+        ${tabs.map(t=>`
+          <button onclick="setActiveTab('${t.id}')" class="py-4 px-1 border-b-2 font-medium text-sm ${state.activeTab===t.id?'border-blue-500 text-blue-600':'border-transparent text-gray-500 hover:text-gray-700'}">
+            ${icons[t.icon]} ${t.name}
+          </button>`).join('')}
+      </div>
+    </div>
+  </nav>`;
+}
 
-        // 팀 통계 계산
-        function getTeamStats() {
-            const matches = state.matches.length;
-            const wins = state.matches.filter(m => m.result === "W").length;
-            const losses = state.matches.filter(m => m.result === "L").length;
-            const draws = state.matches.filter(m => m.result === "D").length;
-            const goalsFor = state.matches.reduce((sum, m) => sum + m.goals, 0);
-            const goalsAgainst = state.matches.reduce((sum, m) => sum + m.conceded, 0);
-            const cleanSheets = state.matches.filter(m => m.conceded === 0).length;
+function createDashboard(){
+  const s = teamStats();
+  const top = [...state.players].sort((a,b)=>b.goals-a.goals).slice(0,5);
+  return `
+  <div class="space-y-6">
+    <div class="bg-gradient-to-r from-green-500 to-blue-600 text-white p-6 rounded-lg">
+      <div class="flex justify-between items-center">
+        <div>
+          <h1 class="text-3xl font-bold mb-2">⚽ 화랑 FC</h1>
+          <p class="text-lg opacity-90">축구는 나의 삶이다</p>
+        </div>
+        <div class="flex space-x-2">
+          <button onclick="saveData()" class="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg flex items-center text-sm">${icons.save} 저장</button>
+          <button onclick="downloadBackup()" class="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg flex items-center text-sm">${icons.download} 백업</button>
+        </div>
+      </div>
+      ${state.saveStatus?`<div class="mt-2 text-sm opacity-90">${state.saveStatus}</div>`:''}
+    </div>
 
-            return {
-                matches,
-                wins,
-                losses,
-                draws,
-                goalsFor,
-                goalsAgainst,
-                cleanSheets,
-                winRate: matches > 0 ? ((wins / matches) * 100).toFixed(1) : 0,
-                avgGoalsFor: matches > 0 ? (goalsFor / matches).toFixed(2) : 0,
-                avgGoalsAgainst: matches > 0 ? (goalsAgainst / matches).toFixed(2) : 0,
-                cleanSheetRate: matches > 0 ? ((cleanSheets / matches) * 100).toFixed(1) : 0
-            };
-        }
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      ${statCard("경기수", s.matches, "calendar","text-green-500")}
+      ${statCard("승률", s.winRate+"%", "barChart","text-blue-500")}
+      ${statCard("득점", s.goalsFor, "target","text-red-500")}
+      ${statCard("실점", s.goalsAgainst, "shield","text-purple-500")}
+    </div>
 
-        // 선수 관리
-        function addPlayer() {
-            if (state.newPlayer.name) {
-                const newPlayer = {
-                    ...state.newPlayer,
-                    id: Date.now(),
-                    goals: 0,
-                    assists: 0,
-                    attendance: 0,
-                    isPresent: false
-                };
-                setState({
-                    players: [...state.players, newPlayer],
-                    newPlayer: { name: "", position: "FW" }
-                });
-                autoSave();
-            }
-        }
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white p-6 rounded-lg shadow-md">
+        <h3 class="text-lg font-semibold mb-4 flex items-center">${icons.barChart} 팀 상세 기록</h3>
+        <div class="space-y-3">
+          ${row("승/무/패", `${s.wins}/${s.draws}/${s.losses}`)}
+          ${row("경기당 득점", s.avgGoalsFor)}
+          ${row("경기당 실점", s.avgGoalsAgainst)}
+          ${row("무실점 경기", `${s.cleanSheets}경기`)}
+          ${row("무실점 비율", `${s.cleanSheetRate}%`)}
+        </div>
+      </div>
 
-        function toggleAttendance(playerId) {
-            const players = state.players.map(player =>
-                player.id === playerId ? { ...player, isPresent: !player.isPresent } : player
-            );
-            setState({ players });
-            autoSave();
-        }
+      <div class="bg-white p-6 rounded-lg shadow-md">
+        <h3 class="text-lg font-semibold mb-4 flex items-center">${icons.target} Top 득점자</h3>
+        <div class="space-y-3">
+          ${top.map((p,i)=>`
+            <div class="flex items-center justify-between">
+              <div class="flex items-center">
+                <span class="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-semibold mr-3">${i+1}</span>
+                <span>${p.name}</span>
+                <span class="ml-2 text-sm text-gray-500">(${p.position})</span>
+              </div>
+              <span class="font-semibold">${p.goals}골</span>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+function statCard(label,value,icon,color){
+  return `
+  <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-gray-100">
+    <div class="flex items-center justify-between">
+      <div>
+        <p class="text-gray-600 text-sm">${label}</p>
+        <p class="text-2xl font-bold text-gray-800">${value}</p>
+      </div>
+      <div class="icon-lg ${color}">${icons[icon]}</div>
+    </div>
+  </div>`}
+function row(l,v){ return `<div class="flex justify-between"><span class="text-gray-600">${l}</span><span class="font-semibold">${v}</span></div>`}
 
-        function getPresentPlayers() {
-            return state.players.filter(p => p.isPresent);
-        }
+function createMatches(){
+  return `
+  <div class="space-y-6">
+    <div class="bg-white p-6 rounded-lg shadow-md">
+      <h3 class="text-lg font-semibold mb-4">새 경기 추가</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <input class="border rounded-lg px-3 py-2" placeholder="상대팀" value="${state.newMatch.opponent}" onchange="updateNewMatch('opponent', this.value)">
+        <input class="border rounded-lg px-3 py-2" placeholder="경기장" value="${state.newMatch.location}" onchange="updateNewMatch('location', this.value)">
+        <input type="date" class="border rounded-lg px-3 py-2" value="${state.newMatch.date}" onchange="updateNewMatch('date', this.value)">
+        <select class="border rounded-lg px-3 py-2" value="${state.newMatch.result}" onchange="updateNewMatch('result', this.value)">
+          <option value="">결과 선택</option><option value="W">승리</option><option value="D">무승부</option><option value="L">패배</option>
+        </select>
+        <input type="number" class="border rounded-lg px-3 py-2" placeholder="득점" value="${state.newMatch.goals}" onchange="updateNewMatch('goals', parseInt(this.value)||0)">
+        <input type="number" class="border rounded-lg px-3 py-2" placeholder="실점" value="${state.newMatch.conceded}" onchange="updateNewMatch('conceded', parseInt(this.value)||0)">
+      </div>
+      <button onclick="addMatch()" class="mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center">${icons.plus} 경기 추가</button>
+    </div>
 
-        // 경기 관리
-        function addMatch() {
-            if (state.newMatch.opponent && state.newMatch.location && state.newMatch.date) {
-                const score = `${state.newMatch.goals}-${state.newMatch.conceded}`;
-                const newMatch = {
-                    ...state.newMatch,
-                    id: Date.now(),
-                    score,
-                    goals: parseInt(state.newMatch.goals),
-                    conceded: parseInt(state.newMatch.conceded)
-                };
-                setState({
-                    matches: [...state.matches, newMatch],
-                    newMatch: { opponent: "", location: "", date: "", result: "", goals: 0, conceded: 0 }
-                });
-                autoSave();
-            }
-        }
+    <div class="bg-white rounded-lg shadow-md">
+      <h3 class="text-lg font-semibold p-6 border-b">경기 기록</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">날짜</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상대팀</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">장소</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">결과</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">스코어</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200">
+            ${state.matches.map(m=>`
+              <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${m.date}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${m.opponent}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${m.location}</td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <span class="px-2 py-1 text-xs rounded-full ${m.result==='W'?'bg-green-100 text-green-800':m.result==='L'?'bg-red-100 text-red-800':'bg-yellow-100 text-yellow-800'}">
+                    ${m.result==='W'?'승리':m.result==='L'?'패배':'무승부'}
+                  </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">${m.score}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+}
 
-        // 포메이션 관리
-        function getTotalFieldPlayers() {
-            return Object.values(state.formation).flat().length;
-        }
+function createFormation(){
+  const present = state.players.filter(p=>p.isPresent);
+  const total = Object.values(state.formation).flat().length;
+  // 간단: 출석자만 보여주고 드래그는 기존과 동일(필요시 확장)
+  return `
+  <div class="space-y-6">
+    <div class="bg-white p-6 rounded-lg shadow-md">
+      <h3 class="text-lg font-semibold mb-4">출석 인원</h3>
+      <div class="flex flex-wrap gap-2 mb-2">
+        ${present.map(p=>`<span class="bg-blue-100 text-blue-800 px-3 py-2 rounded-full text-sm">${p.name} (${p.position})</span>`).join('')}
+      </div>
+      <div class="text-sm text-gray-600">출석 인원: ${present.length}명 | 포메이션 배치: ${total}명/11명</div>
+    </div>
+    <div class="p-4 text-sm text-gray-600 bg-blue-50 border-l-4 border-blue-400 rounded">포메이션 드래그 영역은 필요 시 이어서 확장할 수 있어요.</div>
+  </div>`;
+}
 
-        function removeFromFormation(position, playerIndex) {
-            const formation = { ...state.formation };
-            formation[position] = formation[position].filter((_, index) => index !== playerIndex);
-            setState({ formation });
-        }
+/* ----- 선수관리(검색 + JSON 불러오기 + 출석체크) ----- */
+function createPlayers(){
+  const q = state.playerSearch.trim().toLowerCase();
+  const list = q ? state.players.filter(p=>p.name.toLowerCase().includes(q)) : state.players;
 
-        // HTML 생성 함수들
-        function createApp() {
-            return `
-                <div class="min-h-screen bg-gray-50">
-                    ${createNavigation()}
-                    <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-                        ${state.activeTab === 'dashboard' ? createDashboard() : ''}
-                        ${state.activeTab === 'matches' ? createMatches() : ''}
-                        ${state.activeTab === 'formation' ? createFormation() : ''}
-                        ${state.activeTab === 'players' ? createPlayers() : ''}
-                    </main>
-                </div>
-            `;
-        }
+  return `
+  <div class="space-y-6">
+    <!-- 상단 도구줄: 구성원 JSON 불러오기 / 검색 -->
+    <div class="bg-white p-4 rounded-lg shadow-md flex flex-col md:flex-row md:items-center gap-3">
+      <div class="flex items-center gap-2">
+        <label class="bg-gray-800 text-white px-3 py-2 rounded-lg cursor-pointer">
+          ${icons.upload} 구성원 JSON 불러오기
+          <input id="membersFile" type="file" accept=".json" class="hidden" onchange="importMembersFile(event)">
+        </label>
+        <button onclick="downloadBackup()" class="bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg text-sm">${icons.download} 현재 데이터 백업</button>
+      </div>
+      <div class="md:ml-auto">
+        <input class="border rounded-lg px-3 py-2 w-60" placeholder="선수 이름 검색" value="${state.playerSearch}" oninput="setState({playerSearch:this.value})">
+      </div>
+    </div>
 
-        function createNavigation() {
-            const tabs = [
-                { id: 'dashboard', name: '대시보드', icon: 'barChart' },
-                { id: 'matches', name: '경기 기록', icon: 'calendar' },
-                { id: 'formation', name: '포메이션', icon: 'target' },
-                { id: 'players', name: '선수 관리', icon: 'users' }
-            ];
+    <!-- 출석 체크 -->
+    <div class="bg-white p-6 rounded-lg shadow-md">
+      <h3 class="text-lg font-semibold mb-2">출석 체크</h3>
+      <p class="text-sm text-gray-600 mb-4">검색 결과에 표시된 선수만 리스트에 나타납니다.</p>
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+        ${list.map(p=>`
+          <button onclick="toggleAttendance(${p.id})" class="p-3 rounded-lg border text-left transition-colors ${p.isPresent?'bg-green-50 border-green-300 text-green-800':'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'}">
+            <div class="flex items-center justify-between">
+              <span class="font-medium">${p.name}</span>
+              <span class="text-xs">${p.position}</span>
+            </div>
+            ${p.isPresent?'<div class="text-xs text-green-600 mt-1">✓ 출석</div>':''}
+          </button>`).join('')}
+      </div>
+      <div class="mt-4 text-sm text-gray-600 flex justify-between items-center">
+        <span>출석 인원: ${state.players.filter(p=>p.isPresent).length}명</span>
+        <button onclick="clearAllAttendance()" class="text-red-500 hover:text-red-700 text-xs">전체 출석 해제</button>
+      </div>
+    </div>
 
-            return `
-                <nav class="bg-white shadow-sm border-b">
-                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                        <div class="flex space-x-8">
-                            ${tabs.map(tab => `
-                                <button onclick="setActiveTab('${tab.id}')" class="py-4 px-1 border-b-2 font-medium text-sm ${
-                                    state.activeTab === tab.id 
-                                        ? 'border-blue-500 text-blue-600' 
-                                        : 'border-transparent text-gray-500 hover:text-gray-700'
-                                }">
-                                    ${icons[tab.icon]} ${tab.name}
-                                </button>
-                            `).join('')}
-                        </div>
-                    </div>
-                </nav>
-            `;
-        }
+    <!-- 새 선수 추가 -->
+    <div class="bg-white p-6 rounded-lg shadow-md">
+      <h3 class="text-lg font-semibold mb-4">새 선수 추가</h3>
+      <div class="flex gap-4">
+        <input class="border rounded-lg px-3 py-2 flex-1" placeholder="선수 이름(앞의 '화랑' 등은 자동 제거)" value="${state.newPlayer.name}" onchange="updateNewPlayer('name', this.value)">
+        <select class="border rounded-lg px-3 py-2" value="${state.newPlayer.position}" onchange="updateNewPlayer('position', this.value)">
+          <option value="FW">공격수</option><option value="MF">미드필더</option><option value="DF">수비수</option><option value="GK">골키퍼</option>
+        </select>
+        <button onclick="addPlayer()" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center">${icons.plus} 추가</button>
+      </div>
+    </div>
 
-        function createDashboard() {
-            const stats = getTeamStats();
-            const topScorers = [...state.players].sort((a, b) => b.goals - a.goals).slice(0, 5);
+    <!-- 선수 기록 표 -->
+    <div class="bg-white rounded-lg shadow-md">
+      <h3 class="text-lg font-semibold p-6 border-b">선수 기록</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이름</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">포지션</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">득점</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">도움</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">출석</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">오늘</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200">
+            ${state.players.map(p=>`
+              <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${p.name}</td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <span class="px-2 py-1 text-xs rounded-full ${
+                    p.position==="FW"?"bg-red-100 text-red-800":
+                    p.position==="MF"?"bg-blue-100 text-blue-800":
+                    p.position==="DF"?"bg-green-100 text-green-800":"bg-purple-100 text-purple-800"}">${p.position}</span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm">${p.goals}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm">${p.assists}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm">${p.attendance}</td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <span class="px-2 py-1 text-xs rounded-full ${p.isPresent?'bg-green-100 text-green-800':'bg-gray-100 text-gray-600'}">${p.isPresent?'출석':'불참'}</span>
+                </td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+}
 
-            return `
-                <div class="space-y-6">
-                    <div class="bg-gradient-to-r from-green-500 to-blue-600 text-white p-6 rounded-lg">
-                        <div class="flex justify-between items-center">
-                            <div>
-                                <h1 class="text-3xl font-bold mb-2">⚽ 우리팀 FC</h1>
-                                <p class="text-lg opacity-90">축구는 나의 삶이다</p>
-                            </div>
-                            <div class="flex space-x-2">
-                                <button onclick="saveData()" class="bg-white bg-opacity-20 hover:bg-opacity-30 px-3 py-2 rounded-lg flex items-center text-sm">
-                                    ${icons.save} 저장
-                                </button>
-                                <button onclick="downloadBackup()" class="bg-white bg-opacity-20 hover:bg-opacity-30 px-3 py-2 rounded-lg flex items-center text-sm">
-                                    ${icons.download} 백업
-                                </button>
-                                <button onclick="document.getElementById('fileInput').click()" class="bg-white bg-opacity-20 hover:bg-opacity-30 px-3 py-2 rounded-lg flex items-center text-sm">
-                                    ${icons.upload} 복원
-                                </button>
-                                <input id="fileInput" type="file" accept=".json" onchange="uploadBackup(event)" class="hidden" />
-                            </div>
-                        </div>
-                        ${state.saveStatus ? `<div class="mt-2 text-sm opacity-90">${state.saveStatus}</div>` : ''}
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-green-500">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-gray-600 text-sm">경기수</p>
-                                    <p class="text-2xl font-bold text-green-600">${stats.matches}</p>
-                                </div>
-                                <div class="icon-lg text-green-500">${icons.calendar}</div>
-                            </div>
-                        </div>
-                        <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-blue-500">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-gray-600 text-sm">승률</p>
-                                    <p class="text-2xl font-bold text-blue-600">${stats.winRate}%</p>
-                                </div>
-                                <div class="icon-lg text-blue-500">${icons.trophy}</div>
-                            </div>
-                        </div>
-                        <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-red-500">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-gray-600 text-sm">득점</p>
-                                    <p class="text-2xl font-bold text-red-600">${stats.goalsFor}</p>
-                                </div>
-                                <div class="icon-lg text-red-500">${icons.target}</div>
-                            </div>
-                        </div>
-                        <div class="bg-white p-4 rounded-lg shadow-md border-l-4 border-purple-500">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="text-gray-600 text-sm">실점</p>
-                                    <p class="text-2xl font-bold text-purple-600">${stats.goalsAgainst}</p>
-                                </div>
-                                <div class="icon-lg text-purple-500">${icons.shield}</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <div class="bg-white p-6 rounded-lg shadow-md">
-                            <h3 class="text-lg font-semibold mb-4 flex items-center">
-                                ${icons.barChart} 팀 상세 기록
-                            </h3>
-                            <div class="space-y-3">
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">승/무/패</span>
-                                    <span class="font-semibold">${stats.wins}/${stats.draws}/${stats.losses}</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">경기당 득점</span>
-                                    <span class="font-semibold">${stats.avgGoalsFor}</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">경기당 실점</span>
-                                    <span class="font-semibold">${stats.avgGoalsAgainst}</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">무실점 경기</span>
-                                    <span class="font-semibold">${stats.cleanSheets}경기</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-600">무실점 비율</span>
-                                    <span class="font-semibold">${stats.cleanSheetRate}%</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="bg-white p-6 rounded-lg shadow-md">
-                            <h3 class="text-lg font-semibold mb-4 flex items-center">
-                                ${icons.trophy} Top 득점자
-                            </h3>
-                            <div class="space-y-3">
-                                ${topScorers.map((player, index) => `
-                                    <div class="flex items-center justify-between">
-                                        <div class="flex items-center">
-                                            <span class="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-semibold mr-3">
-                                                ${index + 1}
-                                            </span>
-                                            <span>${player.name}</span>
-                                            <span class="ml-2 text-sm text-gray-500">(${player.position})</span>
-                                        </div>
-                                        <span class="font-semibold">${player.goals}골</span>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        function createMatches() {
-            return `
-                <div class="space-y-6">
-                    <div class="bg-white p-6 rounded-lg shadow-md">
-                        <h3 class="text-lg font-semibold mb-4">새 경기 추가</h3>
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <input type="text" placeholder="상대팀" value="${state.newMatch.opponent}" 
-                                   onchange="updateNewMatch('opponent', this.value)" class="border rounded-lg px-3 py-2">
-                            <input type="text" placeholder="경기장" value="${state.newMatch.location}" 
-                                   onchange="updateNewMatch('location', this.value)" class="border rounded-lg px-3 py-2">
-                            <input type="date" value="${state.newMatch.date}" 
-                                   onchange="updateNewMatch('date', this.value)" class="border rounded-lg px-3 py-2">
-                            <select value="${state.newMatch.result}" onchange="updateNewMatch('result', this.value)" class="border rounded-lg px-3 py-2">
-                                <option value="">결과 선택</option>
-                                <option value="W">승리</option>
-                                <option value="D">무승부</option>
-                                <option value="L">패배</option>
-                            </select>
-                            <input type="number" placeholder="득점" value="${state.newMatch.goals}" 
-                                   onchange="updateNewMatch('goals', parseInt(this.value) || 0)" class="border rounded-lg px-3 py-2">
-                            <input type="number" placeholder="실점" value="${state.newMatch.conceded}" 
-                                   onchange="updateNewMatch('conceded', parseInt(this.value) || 0)" class="border rounded-lg px-3 py-2">
-                        </div>
-                        <button onclick="addMatch()" class="mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center">
-                            ${icons.plus} 경기 추가
-                        </button>
-                    </div>
-
-                    <div class="bg-white rounded-lg shadow-md">
-                        <h3 class="text-lg font-semibold p-6 border-b">경기 기록</h3>
-                        <div class="overflow-x-auto">
-                            <table class="w-full">
-                                <thead class="bg-gray-50">
-                                    <tr>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">장소</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">결과</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">스코어</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-200">
-                                    ${state.matches.map(match => `
-                                        <tr class="hover:bg-gray-50">
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${match.date}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${match.opponent}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${match.location}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap">
-                                                <span class="px-2 py-1 text-xs rounded-full ${
-                                                    match.result === "W" ? "bg-green-100 text-green-800" :
-                                                    match.result === "L" ? "bg-red-100 text-red-800" : "bg-yellow-100 text-yellow-800"
-                                                }">
-                                                    ${match.result === "W" ? "승리" : match.result === "L" ? "패배" : "무승부"}
-                                                </span>
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">${match.score}</td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        function createFormation() {
-            const presentPlayers = getPresentPlayers();
-            const totalInFormation = getTotalFieldPlayers();
-
-            return `
-                <div class="space-y-6">
-                    <div class="bg-white p-6 rounded-lg shadow-md">
-                        <h3 class="text-lg font-semibold mb-4">출석 인원</h3>
-                        <div class="flex flex-wrap gap-2 mb-4">
-                            ${presentPlayers.map(player => `
-                                <div class="bg-blue-100 text-blue-800 px-3 py-2 rounded-full text-sm font-medium cursor-move hover:bg-blue-200 transition-colors flex items-center"
-                                     draggable="true" ondragstart="handleDragStart(event, ${player.id})">
-                                    <span class="mr-1">${player.name}</span>
-                                    <span class="text-xs">(${player.position})</span>
-                                </div>
-                            `).join('')}
-                        </div>
-                        ${presentPlayers.length === 0 ? '<p class="text-gray-500 text-sm">출석한 선수가 없습니다. 선수관리 탭에서 출석체크를 해주세요.</p>' : ''}
-                        <div class="text-sm text-gray-600">
-                            출석 인원: ${presentPlayers.length}명 | 포메이션 배치: ${totalInFormation}명/11명
-                        </div>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-lg shadow-md">
-                        <h3 class="text-lg font-semibold mb-4">축구장 배치</h3>
-                        <div class="bg-green-100 p-4 rounded-lg relative" style="min-height: 600px;">
-                            <div class="absolute inset-0 bg-gradient-to-b from-green-200 to-green-300 rounded-lg"></div>
-                            
-                            <div class="relative h-full">
-                                <!-- 축구장 라인 -->
-                                <div class="absolute bottom-2 left-1/2 transform -translate-x-1/2 w-20 h-8 border-2 border-white bg-white bg-opacity-30"></div>
-                                <div class="absolute top-2 left-1/2 transform -translate-x-1/2 w-20 h-8 border-2 border-white bg-white bg-opacity-30"></div>
-                                <div class="absolute bottom-2 left-1/2 transform -translate-x-1/2 -translate-y-2 w-32 h-16 border-2 border-white"></div>
-                                <div class="absolute top-2 left-1/2 transform -translate-x-1/2 translate-y-2 w-32 h-16 border-2 border-white"></div>
-                                <div class="absolute top-1/2 left-0 right-0 h-0.5 bg-white"></div>
-                                <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-20 h-20 border-2 border-white rounded-full"></div>
-                                <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full"></div>
-
-                                <!-- 선수 배치 -->
-                                <div class="h-full flex flex-col justify-between py-16">
-                                    ${createPositionArea('fw', '공격수', 'bg-red-500', state.formation.fw)}
-                                    ${createPositionArea('amf', '공격형 미드필더', 'bg-orange-500', state.formation.amf)}
-                                    ${createPositionArea('cmf', '중앙 미드필더', 'bg-blue-500', state.formation.cmf)}
-                                    ${createPositionArea('dmf', '수비형 미드필더', 'bg-teal-500', state.formation.dmf)}
-                                    ${createPositionArea('def', '수비수', 'bg-green-500', state.formation.def)}
-                                    ${createPositionArea('gk', '골키퍼', 'bg-purple-500', state.formation.gk)}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="mt-4 text-center">
-                            <span class="text-sm font-medium ${
-                                totalInFormation === 11 ? "text-green-600" :
-                                totalInFormation > 11 ? "text-red-600" : "text-gray-600"
-                            }">
-                                필드 선수: ${totalInFormation}/11명
-                                ${totalInFormation > 11 ? " (인원 초과!)" : ""}
-                                ${totalInFormation === 11 ? " ✓ 완료" : ""}
-                            </span>
-                        </div>
-
-                        <div class="mt-4 text-center">
-                            <button onclick="resetFormation()" class="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 text-sm">
-                                포메이션 초기화
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        function createPositionArea(position, name, bgColor, players) {
-            const spacing = position === 'def' ? 'space-x-4' : position === 'dmf' ? 'space-x-8' : 'space-x-6';
-            return `
-                <div class="flex justify-center ${spacing} min-h-[60px] items-center"
-                     ondrop="handleDrop(event, '${position}')" ondragover="handleDragOver(event)">
-                    ${players.map((player, index) => `
-                        <div class="w-20 h-20 ${bgColor} rounded-full flex items-center justify-center text-white text-xs font-bold relative group shadow-lg cursor-pointer"
-                             onclick="removeFromFormation('${position}', ${index})">
-                            <span class="text-center p-1">${player.name}<br />(${position.toUpperCase()})</span>
-                        </div>
-                    `).join('')}
-                    ${players.length === 0 ? `<div class="text-center text-gray-400 text-sm py-2">${name} 영역</div>` : ''}
-                </div>
-            `;
-        }
-
-        function createPlayers() {
-            return `
-                <div class="space-y-6">
-                    <div class="bg-white p-6 rounded-lg shadow-md">
-                        <h3 class="text-lg font-semibold mb-4">출석 체크</h3>
-                        <p class="text-sm text-gray-600 mb-4">오늘 참석한 선수들을 체크해주세요</p>
-                        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                            ${state.players.map(player => `
-                                <button onclick="toggleAttendance(${player.id})" 
-                                        class="p-3 rounded-lg border text-left transition-colors ${
-                                            player.isPresent
-                                                ? "bg-green-50 border-green-300 text-green-800"
-                                                : "bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100"
-                                        }">
-                                    <div class="flex items-center justify-between">
-                                        <span class="font-medium">${player.name}</span>
-                                        <span class="text-xs">${player.position}</span>
-                                    </div>
-                                    ${player.isPresent ? '<div class="text-xs text-green-600 mt-1">✓ 출석</div>' : ''}
-                                </button>
-                            `).join('')}
-                        </div>
-                        <div class="mt-4 text-sm text-gray-600 flex justify-between items-center">
-                            <span>출석 인원: ${getPresentPlayers().length}명</span>
-                            <button onclick="clearAllAttendance()" class="text-red-500 hover:text-red-700 text-xs">
-                                전체 출석 해제
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="bg-white p-6 rounded-lg shadow-md">
-                        <h3 class="text-lg font-semibold mb-4">새 선수 추가</h3>
-                        <div class="flex gap-4">
-                            <input type="text" placeholder="선수 이름" value="${state.newPlayer.name}"
-                                   onchange="updateNewPlayer('name', this.value)" class="border rounded-lg px-3 py-2 flex-1">
-                            <select value="${state.newPlayer.position}" onchange="updateNewPlayer('position', this.value)" 
-                                    class="border rounded-lg px-3 py-2">
-                                <option value="FW">공격수</option>
-                                <option value="MF">미드필더</option>
-                                <option value="DF">수비수</option>
-                                <option value="GK">골키퍼</option>
-                            </select>
-                            <button onclick="addPlayer()" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center">
-                                ${icons.plus} 추가
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="bg-white rounded-lg shadow-md">
-                        <h3 class="text-lg font-semibold p-6 border-b">선수 기록</h3>
-                        <div class="overflow-x-auto">
-                            <table class="w-full">
-                                <thead class="bg-gray-50">
-                                    <tr>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이름</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">포지션</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">득점</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">도움</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">출석</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">오늘</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-200">
-                                    ${state.players.map(player => `
-                                        <tr class="hover:bg-gray-50">
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${player.name}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap">
-                                                <span class="px-2 py-1 text-xs rounded-full ${
-                                                    player.position === "FW" ? "bg-red-100 text-red-800" :
-                                                    player.position === "MF" ? "bg-blue-100 text-blue-800" :
-                                                    player.position === "DF" ? "bg-green-100 text-green-800" :
-                                                    "bg-purple-100 text-purple-800"
-                                                }">
-                                                    ${player.position}
-                                                </span>
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${player.goals}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${player.assists}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${player.attendance}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap">
-                                                <span class="px-2 py-1 text-xs rounded-full ${
-                                                    player.isPresent ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"
-                                                }">
-                                                    ${player.isPresent ? "출석" : "불참"}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        // 이벤트 핸들러들
-        function attachEventListeners() {
-            // 드래그 앤 드롭은 이미 인라인으로 처리됨
-        }
-
-        function setActiveTab(tab) {
-            setState({ activeTab: tab });
-        }
-
-        function updateNewMatch(field, value) {
-            setState({ newMatch: { ...state.newMatch, [field]: value } });
-        }
-
-        function updateNewPlayer(field, value) {
-            setState({ newPlayer: { ...state.newPlayer, [field]: value } });
-        }
-
-        function clearAllAttendance() {
-            const players = state.players.map(p => ({ ...p, isPresent: false }));
-            setState({ players });
-            autoSave();
-        }
-
-        function resetFormation() {
-            setState({ formation: { gk: [], def: [], dmf: [], cmf: [], amf: [], fw: [] } });
-        }
-
-        // 드래그 앤 드롭 핸들러
-        function handleDragStart(event, playerId) {
-            const player = state.players.find(p => p.id === playerId);
-            state.draggedPlayer = player;
-            event.dataTransfer.effectAllowed = "move";
-        }
-
-        function handleDragOver(event) {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = "move";
-        }
-
-        function handleDrop(event, position) {
-            event.preventDefault();
-            if (state.draggedPlayer) {
-                const maxPositions = { gk: 1, def: 4, dmf: 3, cmf: 4, amf: 3, fw: 3 };
-                if (state.formation[position].length < maxPositions[position]) {
-                    const totalFieldPlayers = Object.values(state.formation).flat().length;
-                    if (totalFieldPlayers < 11) {
-                        const isAlreadyInFormation = Object.values(state.formation)
-                            .flat().some(p => p.id === state.draggedPlayer.id);
-                        if (!isAlreadyInFormation) {
-                            const formation = { ...state.formation };
-                            formation[position] = [...formation[position], state.draggedPlayer];
-                            setState({ formation });
-                        }
-                    }
-                }
-            }
-            state.draggedPlayer = null;
-        }
-
-        // 초기화
-        document.addEventListener('DOMContentLoaded', function() {
-            loadData();
-            render();
-        });
-    </script>
+/* -------------------- 시작 -------------------- */
+document.addEventListener('DOMContentLoaded', ()=>{ 
+  loadData();
+  // 최초 한번만 초기값 세팅(이미 로드 시 setState 호출로 render됨)
+});
+</script>
 </body>
-</html>text-left text-xs font-medium text-gray-500 uppercase">날짜</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상대팀</th>
-                                        <th class="px-6 py-3
+</html>
