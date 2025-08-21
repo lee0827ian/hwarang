@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>축구팀 관리 시스템</title>
+  <!-- React 18 UMD -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <!-- Babel (for in-browser JSX) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <!-- TailwindCSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- lucide-react UMD (React 아이콘 컴포넌트). 전역 객체 이름: LucideReact -->
+  <script src="https://unpkg.com/lucide-react@latest/dist/umd/lucide-react.production.js"></script>
+  <style>
+    body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+    const { Plus, Users, Trophy, Calendar, BarChart3, Target, Shield, Clock, Download, Upload, Save, Check } = LucideReact;
+
+    const SoccerTeamManager = () => {
+      const [activeTab, setActiveTab] = useState('dashboard');
+      const [players, setPlayers] = useState([]);
+      const [matches, setMatches] = useState([]);
+      const [draggedPlayer, setDraggedPlayer] = useState(null);
+      const [saveStatus, setSaveStatus] = useState('');
+      const fileInputRef = useRef(null);
+
+      // 초기 데이터
+      const initialPlayers = [
+        { id: 1, name: '김철수', position: 'FW', goals: 5, assists: 3, attendance: 8, isPresent: false },
+        { id: 2, name: '이영희', position: 'MF', goals: 2, assists: 6, attendance: 9, isPresent: false },
+        { id: 3, name: '박민수', position: 'DF', goals: 1, assists: 1, attendance: 7, isPresent: false },
+        { id: 4, name: '정수현', position: 'GK', goals: 0, assists: 0, attendance: 10, isPresent: false },
+        { id: 5, name: '최윤석', position: 'MF', goals: 3, assists: 4, attendance: 6, isPresent: false },
+        { id: 6, name: '한지민', position: 'DF', goals: 0, assists: 2, attendance: 8, isPresent: false }
+      ];
+
+      const initialMatches = [
+        { id: 1, opponent: 'FC 레드', location: '잠실운동장', date: '2024-08-15', result: 'W', score: '3-1', goals: 3, conceded: 1, goalScorers: [], assistProviders: [] },
+        { id: 2, opponent: '블루 유나이티드', location: '월드컵경기장', date: '2024-08-10', result: 'L', score: '1-2', goals: 1, conceded: 2, goalScorers: [], assistProviders: [] },
+        { id: 3, opponent: '그린 FC', location: '올림픽공원', date: '2024-08-05', result: 'D', score: '2-2', goals: 2, conceded: 2, goalScorers: [], assistProviders: [] }
+      ];
+
+      const [newMatch, setNewMatch] = useState({
+        opponent: '', location: '', date: '', result: '', goals: 0, conceded: 0, goalScorers: [], assistProviders: []
+      });
+
+      const [newPlayer, setNewPlayer] = useState({ name: '', position: 'FW' });
+
+      const [formation, setFormation] = useState({ gk: [], def: [], dmf: [], cmf: [], amf: [], fw: [] });
+
+      const maxPositions = { gk: 1, def: 4, dmf: 3, cmf: 4, amf: 3, fw: 3 };
+
+      // 데이터 로딩
+      useEffect(() => {
+        const savedData = localStorage.getItem('soccerTeamData');
+        if (savedData) {
+          try {
+            const data = JSON.parse(savedData);
+            setPlayers(data.players || initialPlayers);
+            setMatches(data.matches || initialMatches);
+            setSaveStatus('✓ 저장된 데이터 불러옴');
+            setTimeout(() => setSaveStatus(''), 3000);
+          } catch (error) {
+            setPlayers(initialPlayers);
+            setMatches(initialMatches);
+          }
+        } else {
+          setPlayers(initialPlayers);
+          setMatches(initialMatches);
+        }
+      }, []);
+
+      // 자동 저장
+      useEffect(() => {
+        if (players.length > 0 || matches.length > 0) {
+          const data = { players, matches, savedAt: new Date().toISOString() };
+          localStorage.setItem('soccerTeamData', JSON.stringify(data));
+        }
+      }, [players, matches]);
+
+      // 데이터 저장
+      const saveData = () => {
+        const data = { players, matches, savedAt: new Date().toISOString() };
+        localStorage.setItem('soccerTeamData', JSON.stringify(data));
+        setSaveStatus('✓ 저장 완료');
+        setTimeout(() => setSaveStatus(''), 3000);
+      };
+
+      // 백업 다운로드
+      const downloadBackup = () => {
+        const data = { players, matches, exportedAt: new Date().toISOString(), version: '1.0' };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `soccer-team-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setSaveStatus('✓ 백업 파일 다운로드됨');
+        setTimeout(() => setSaveStatus(''), 3000);
+      };
+
+      // 백업 업로드
+      const uploadBackup = (event) => {
+        const file = event.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            try {
+              const data = JSON.parse(e.target.result);
+              if (data.players && data.matches) {
+                setPlayers(data.players);
+                setMatches(data.matches);
+                setSaveStatus('✓ 백업 데이터 복원됨');
+                setTimeout(() => setSaveStatus(''), 3000);
+              } else {
+                alert('올바른 백업 파일이 아닙니다.');
+              }
+            } catch (error) {
+              alert('파일 읽기 실패: ' + error.message);
+            }
+          };
+          reader.readAsText(file);
+        }
+      };
+
+      // 팀 통계 계산
+      const teamStats = {
+        matches: matches.length,
+        wins: matches.filter((m) => m.result === 'W').length,
+        losses: matches.filter((m) => m.result === 'L').length,
+        draws: matches.filter((m) => m.result === 'D').length,
+        goalsFor: matches.reduce((sum, m) => sum + m.goals, 0),
+        goalsAgainst: matches.reduce((sum, m) => sum + m.conceded, 0),
+        cleanSheets: matches.filter((m) => m.conceded === 0).length,
+        scoreless: matches.filter((m) => m.goals === 0).length,
+      };
+
+      teamStats.winRate = teamStats.matches > 0 ? ((teamStats.wins / teamStats.matches) * 100).toFixed(1) : 0;
+      teamStats.avgGoalsFor = teamStats.matches > 0 ? (teamStats.goalsFor / teamStats.matches).toFixed(2) : 0;
+      teamStats.avgGoalsAgainst = teamStats.matches > 0 ? (teamStats.goalsAgainst / teamStats.matches).toFixed(2) : 0;
+      teamStats.cleanSheetRate = teamStats.matches > 0 ? ((teamStats.cleanSheets / teamStats.matches) * 100).toFixed(1) : 0;
+
+      const addMatch = () => {
+        if (newMatch.opponent && newMatch.location && newMatch.date) {
+          const score = `${newMatch.goals}-${newMatch.conceded}`;
+
+          // 선수 기록 업데이트 (동일 선수 중복 선택 시 +1 로직이면 배열 길이만큼 더해도 됨)
+          const updatedPlayers = players.map((player) => {
+            let updated = { ...player };
+            if (newMatch.goalScorers.includes(player.id)) updated.goals += 1;
+            if (newMatch.assistProviders.includes(player.id)) updated.assists += 1;
+            return updated;
+          });
+          setPlayers(updatedPlayers);
+
+          setMatches([
+            ...matches,
+            { ...newMatch, id: Date.now(), score, goals: parseInt(newMatch.goals) || 0, conceded: parseInt(newMatch.conceded) || 0 },
+          ]);
+
+          setNewMatch({ opponent: '', location: '', date: '', result: '', goals: 0, conceded: 0, goalScorers: [], assistProviders: [] });
+        }
+      };
+
+      const addPlayer = () => {
+        if (newPlayer.name) {
+          setPlayers([
+            ...players,
+            { ...newPlayer, id: Date.now(), goals: 0, assists: 0, attendance: 0, isPresent: false },
+          ]);
+          setNewPlayer({ name: '', position: 'FW' });
+        }
+      };
+
+      const toggleAttendance = (playerId) => {
+        setPlayers(players.map((p) => (p.id === playerId ? { ...p, isPresent: !p.isPresent } : p)));
+      };
+
+      const getPresentPlayers = () => players.filter((p) => p.isPresent);
+
+      // 드래그 앤 드롭
+      const handleDragStart = (e, player) => {
+        setDraggedPlayer(player);
+        e.dataTransfer.effectAllowed = 'move';
+      };
+
+      const handleDragOver = (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+      };
+
+      const handleDrop = (e, position) => {
+        e.preventDefault();
+        if (draggedPlayer && formation[position].length < maxPositions[position]) {
+          const totalFieldPlayers = Object.values(formation).flat().length;
+          if (totalFieldPlayers < 11) {
+            const exists = Object.values(formation).flat().some((p) => p.id === draggedPlayer.id);
+            if (!exists) {
+              setFormation({ ...formation, [position]: [...formation[position], draggedPlayer] });
+            }
+          }
+        }
+        setDraggedPlayer(null);
+      };
+
+      const removeFromFormation = (position, idx) => {
+        setFormation({ ...formation, [position]: formation[position].filter((_, i) => i !== idx) });
+      };
+
+      const getTotalFieldPlayers = () => Object.values(formation).flat().length;
+
+      const Dashboard = () => (
+        <div className="space-y-6">
+          <div className="bg-gradient-to-r from-green-500 to-blue-600 text-white p-6 rounded-lg">
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-3xl font-bold mb-2">⚽ 우리팀 FC</h1>
+                <p className="text-lg opacity-90">축구는 나의 삶이다</p>
+              </div>
+              <div className="flex space-x-2">
+                <button onClick={saveData} className="bg-white bg-opacity-20 hover:bg-opacity-30 px-3 py-2 rounded-lg flex items-center text-sm"><Save className="mr-1 h-4 w-4" />저장</button>
+                <button onClick={downloadBackup} className="bg-white bg-opacity-20 hover:bg-opacity-30 px-3 py-2 rounded-lg flex items-center text-sm"><Download className="mr-1 h-4 w-4" />백업</button>
+                <button onClick={() => fileInputRef.current?.click()} className="bg-white bg-opacity-20 hover:bg-opacity-30 px-3 py-2 rounded-lg flex items-center text-sm"><Upload className="mr-1 h-4 w-4" />복원</button>
+                <input ref={fileInputRef} type="file" accept=".json" onChange={uploadBackup} className="hidden" />
+              </div>
+            </div>
+            {saveStatus && <div className="mt-2 text-sm opacity-90">{saveStatus}</div>}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-lg shadow-md border-l-4 border-green-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-gray-600 text-sm">경기수</p>
+                  <p className="text-2xl font-bold text-green-600">{teamStats.matches}</p>
+                </div>
+                <Calendar className="h-8 w-8 text-green-500" />
+              </div>
+            </div>
+            <div className="bg-white p-4 rounded-lg shadow-md border-l-4 border-blue-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-gray-600 text-sm">승률</p>
+                  <p className="text-2xl font-bold text-blue-600">{teamStats.winRate}%</p>
+                </div>
+                <Trophy className="h-8 w-8 text-blue-500" />
+              </div>
+            </div>
+            <div className="bg-white p-4 rounded-lg shadow-md border-l-4 border-red-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-gray-600 text-sm">득점</p>
+                  <p className="text-2xl font-bold text-red-600">{teamStats.goalsFor}</p>
+                </div>
+                <Target className="h-8 w-8 text-red-500" />
+              </div>
+            </div>
+            <div className="bg-white p-4 rounded-lg shadow-md border-l-4 border-purple-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-gray-600 text-sm">실점</p>
+                  <p className="text-2xl font-bold text-purple-600">{teamStats.goalsAgainst}</p>
+                </div>
+                <Shield className="h-8 w-8 text-purple-500" />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h3 className="text-lg font-semibold mb-4 flex items-center"><BarChart3 className="mr-2 h-5 w-5" />팀 상세 기록</h3>
+              <div className="space-y-3">
+                <div className="flex justify-between"><span className="text-gray-600">승/무/패</span><span className="font-semibold">{teamStats.wins}/{teamStats.draws}/{teamStats.losses}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600">경기당 득점</span><span className="font-semibold">{teamStats.avgGoalsFor}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600">경기당 실점</span><span className="font-semibold">{teamStats.avgGoalsAgainst}</span></div>
+                <div className="flex justify-between"><span className="text-gray-600">무실점 경기</span><span className="font-semibold">{teamStats.cleanSheets}경기</span></div>
+                <div className="flex justify-between"><span className="text-gray-600">무실점 비율</span><span className="font-semibold">{teamStats.cleanSheetRate}%</span></div>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h3 className="text-lg font-semibold mb-4 flex items-center"><Trophy className="mr-2 h-5 w-5" />Top 득점자</h3>
+              <div className="space-y-3">
+                {[...players].sort((a, b) => b.goals - a.goals).slice(0, 5).map((player, index) => (
+                  <div key={player.id} className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-semibold mr-3">{index + 1}</span>
+                      <span>{player.name}</span>
+                      <span className="ml-2 text-sm text-gray-500">({player.position})</span>
+                    </div>
+                    <span className="font-semibold">{player.goals}골</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+      const MatchesTab = () => (
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h3 className="text-lg font-semibold mb-4">새 경기 추가</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <input type="text" placeholder="상대팀" value={newMatch.opponent} onChange={(e) => setNewMatch({ ...newMatch, opponent: e.target.value })} className="border rounded-lg px-3 py-2" />
+              <input type="text" placeholder="경기장" value={newMatch.location} onChange={(e) => setNewMatch({ ...newMatch, location: e.target.value })} className="border rounded-lg px-3 py-2" />
+              <input type="date" value={newMatch.date} onChange={(e) => setNewMatch({ ...newMatch, date: e.target.value })} className="border rounded-lg px-3 py-2" />
+              <select value={newMatch.result} onChange={(e) => setNewMatch({ ...newMatch, result: e.target.value })} className="border rounded-lg px-3 py-2">
+                <option value="">결과 선택</option>
+                <option value="W">승리</option>
+                <option value="D">무승부</option>
+                <option value="L">패배</option>
+              </select>
+              <input type="number" placeholder="득점" value={newMatch.goals} onChange={(e) => setNewMatch({ ...newMatch, goals: parseInt(e.target.value) || 0 })} className="border rounded-lg px-3 py-2" />
+              <input type="number" placeholder="실점" value={newMatch.conceded} onChange={(e) => setNewMatch({ ...newMatch, conceded: parseInt(e.target.value) || 0 })} className="border rounded-lg px-3 py-2" />
+            </div>
+            <button onClick={addMatch} className="mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center"><Plus className="mr-2 h-4 w-4" />경기 추가</button>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-md">
+            <h3 className="text-lg font-semibold p-6 border-b">경기 기록</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">날짜</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상대팀</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">장소</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">결과</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">스코어</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {matches.map((match) => (
+                    <tr key={match.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{match.date}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{match.opponent}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{match.location}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 text-xs rounded-full ${match.result === 'W' ? 'bg-green-100 text-green-800' : match.result === 'L' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>{match.result === 'W' ? '승리' : match.result === 'L' ? '패배' : '무승부'}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{match.score}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+
+      const FormationTab = () => {
+        const presentPlayers = getPresentPlayers();
+        const totalInFormation = getTotalFieldPlayers();
+
+        return (
+          <div className="space-y-6">
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h3 className="text-lg font-semibold mb-4">출석 인원</h3>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {presentPlayers.map((player) => (
+                  <div key={player.id} draggable onDragStart={(e) => handleDragStart(e, player)} className="bg-blue-100 text-blue-800 px-3 py-2 rounded-full text-sm font-medium cursor-move hover:bg-blue-200 transition-colors flex items-center">
+                    <span className="mr-1">{player.name}</span>
+                    <span className="text-xs">({player.position})</span>
+                  </div>
+                ))}
+              </div>
+              {presentPlayers.length === 0 && <p className="text-gray-500 text-sm">출석한 선수가 없습니다. 선수관리 탭에서 출석체크를 해주세요.</p>}
+              <div className="text-sm text-gray-600">출석 인원: {presentPlayers.length}명 | 포메이션 배치: {totalInFormation}명/11명</div>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <h3 className="text-lg font-semibold mb-4">축구장 배치</h3>
+              <div className="bg-green-100 p-4 rounded-lg relative" style={{ minHeight: '600px' }}>
+                <div className="absolute inset-0 bg-gradient-to-b from-green-200 to-green-300 rounded-lg"></div>
+
+                <div className="relative h-full">
+                  {/* 라인들 */}
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-20 h-8 border-2 border-white bg-white/30"></div>
+                  <div className="absolute top-2 left-1/2 -translate-x-1/2 w-20 h-8 border-2 border-white bg-white/30"></div>
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 -translate-y-2 w-32 h-16 border-2 border-white"></div>
+                  <div className="absolute top-2 left-1/2 -translate-x-1/2 translate-y-2 w-32 h-16 border-2 border-white"></div>
+                  <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-white"></div>
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 border-2 border-white rounded-full"></div>
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-white rounded-full"></div>
+
+                  {/* 포지션 드랍 영역들 */}
+                  <div className="h-full flex flex-col justify-between py-16">
+                    <div onDrop={(e) => handleDrop(e, 'fw')} onDragOver={handleDragOver} className="flex justify-center space-x-8 min-h-[60px] items-center">
+                      {formation.fw.map((p, i) => (
+                        <div key={i} className="w-20 h-20 bg-red-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg cursor-pointer" onClick={() => removeFromFormation('fw', i)}>
+                          <span className="text-center p-1">{p.name}<br/>(FW)</span>
+                        </div>
+                      ))}
+                      {formation.fw.length === 0 && <div className="text-center text-gray-400 text-sm py-2">공격수 영역</div>}
+                    </div>
+
+                    <div onDrop={(e) => handleDrop(e, 'amf')} onDragOver={handleDragOver} className="flex justify-center space-x-6 min-h-[60px] items-center">
+                      {formation.amf.map((p, i) => (
+                        <div key={i} className="w-20 h-20 bg-orange-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg cursor-pointer" onClick={() => removeFromFormation('amf', i)}>
+                          <span className="text-center p-1">{p.name}<br/>(AM)</span>
+                        </div>
+                      ))}
+                      {formation.amf.length === 0 && <div className="text-center text-gray-400 text-sm py-2">공격형 미드필더 영역</div>}
+                    </div>
+
+                    <div onDrop={(e) => handleDrop(e, 'cmf')} onDragOver={handleDragOver} className="flex justify-center space-x-6 min-h-[60px] items-center">
+                      {formation.cmf.map((p, i) => (
+                        <div key={i} className="w-20 h-20 bg-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg cursor-pointer" onClick={() => removeFromFormation('cmf', i)}>
+                          <span className="text-center p-1">{p.name}<br/>(CM)</span>
+                        </div>
+                      ))}
+                      {formation.cmf.length === 0 && <div className="text-center text-gray-400 text-sm py-2">중앙 미드필더 영역</div>}
+                    </div>
+
+                    <div onDrop={(e) => handleDrop(e, 'dmf')} onDragOver={handleDragOver} className="flex justify-center space-x-8 min-h-[60px] items-center">
+                      {formation.dmf.map((p, i) => (
+                        <div key={i} className="w-20 h-20 bg-teal-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg cursor-pointer" onClick={() => removeFromFormation('dmf', i)}>
+                          <span className="text-center p-1">{p.name}<br/>(DM)</span>
+                        </div>
+                      ))}
+                      {formation.dmf.length === 0 && <div className="text-center text-gray-400 text-sm py-2">수비형 미드필더 영역</div>}
+                    </div>
+
+                    <div onDrop={(e) => handleDrop(e, 'def')} onDragOver={handleDragOver} className="flex justify-center space-x-4 min-h-[60px] items-center">
+                      {formation.def.map((p, i) => (
+                        <div key={i} className="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg cursor-pointer" onClick={() => removeFromFormation('def', i)}>
+                          <span className="text-center p-1">{p.name}<br/>(DF)</span>
+                        </div>
+                      ))}
+                      {formation.def.length === 0 && <div className="text-center text-gray-400 text-sm py-2">수비수 영역</div>}
+                    </div>
+
+                    <div onDrop={(e) => handleDrop(e, 'gk')} onDragOver={handleDragOver} className="flex justify-center min-h-[60px] items-center">
+                      {formation.gk.map((p, i) => (
+                        <div key={i} className="w-20 h-20 bg-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg cursor-pointer" onClick={() => removeFromFormation('gk', i)}>
+                          <span className="text-center p-1">{p.name}<br/>(GK)</span>
+                        </div>
+                      ))}
+                      {formation.gk.length === 0 && <div className="text-center text-gray-400 text-sm py-2">골키퍼 영역</div>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 text-center">
+                <span className={`text-sm font-medium ${totalInFormation === 11 ? 'text-green-600' : totalInFormation > 11 ? 'text-red-600' : 'text-gray-600'}`}>
+                  필드 선수: {totalInFormation}/11명
+                  {totalInFormation > 11 && ' (인원 초과!)'}
+                  {totalInFormation === 11 && ' ✓ 완료'}
+                </span>
+              </div>
+
+              <div className="mt-4 text-center">
+                <button onClick={() => setFormation({ gk: [], def: [], dmf: [], cmf: [], amf: [], fw: [] })} className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 text-sm">포메이션 초기화</button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const PlayersTab = () => (
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h3 className="text-lg font-semibold mb-4">출석 체크</h3>
+            <p className="text-sm text-gray-600 mb-4">오늘 참석한 선수들을 체크해주세요</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {players.map((player) => (
+                <button key={player.id} onClick={() => toggleAttendance(player.id)} className={`p-3 rounded-lg border text-left transition-colors ${player.isPresent ? 'bg-green-50 border-green-300 text-green-800' : 'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'}`}>
+                  <div className="flex items-center justify-between"><span className="font-medium">{player.name}</span><span className="text-xs">{player.position}</span></div>
+                  {player.isPresent && <div className="text-xs text-green-600 mt-1">✓ 출석</div>}
+                </button>
+              ))}
+            </div>
+            <div className="mt-4 text-sm text-gray-600 flex justify-between items-center">
+              <span>출석 인원: {players.filter((p) => p.isPresent).length}명</span>
+              <button onClick={() => setPlayers(players.map((p) => ({ ...p, isPresent: false })))} className="text-red-500 hover:text-red-700 text-xs">전체 출석 해제</button>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h3 className="text-lg font-semibold mb-4">새 선수 추가</h3>
+            <div className="flex gap-4">
+              <input type="text" placeholder="선수 이름" value={newPlayer.name} onChange={(e) => setNewPlayer({ ...newPlayer, name: e.target.value })} className="border rounded-lg px-3 py-2 flex-1" />
+              <select value={newPlayer.position} onChange={(e) => setNewPlayer({ ...newPlayer, position: e.target.value })} className="border rounded-lg px-3 py-2">
+                <option value="FW">공격수</option>
+                <option value="MF">미드필더</option>
+                <option value="DF">수비수</option>
+                <option value="GK">골키퍼</option>
+              </select>
+              <button onClick={addPlayer} className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center"><Plus className="mr-2 h-4 w-4" />추가</button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-md">
+            <h3 className="text-lg font-semibold p-6 border-b">선수 기록</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이름</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">포지션</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">득점</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">도움</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">출석</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">오늘</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {players.map((player) => (
+                    <tr key={player.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{player.name}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 text-xs rounded-full ${player.position === 'FW' ? 'bg-red-100 text-red-800' : player.position === 'MF' ? 'bg-blue-100 text-blue-800' : player.position === 'DF' ? 'bg-green-100 text-green-800' : 'bg-purple-100 text-purple-800'}`}>{player.position}</span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{player.goals}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{player.assists}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{player.attendance}</td>
+                      <td className="px-6 py-4 whitespace-nowrap"><span className={`px-2 py-1 text-xs rounded-full ${player.isPresent ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>{player.isPresent ? '출석' : '불참'}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      );
+
+      return (
+        <div className="min-h-screen bg-gray-50">
+          <nav className="bg-white shadow-sm border-b">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex space-x-8">
+                <button onClick={() => setActiveTab('dashboard')} className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'dashboard' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><BarChart3 className="inline mr-2 h-4 w-4" />대시보드</button>
+                <button onClick={() => setActiveTab('matches')} className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'matches' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><Calendar className="inline mr-2 h-4 w-4" />경기 기록</button>
+                <button onClick={() => setActiveTab('formation')} className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'formation' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><Target className="inline mr-2 h-4 w-4" />포메이션</button>
+                <button onClick={() => setActiveTab('players')} className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'players' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}><Users className="inline mr-2 h-4 w-4" />선수 관리</button>
+              </div>
+            </div>
+          </nav>
+
+          <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+            {activeTab === 'dashboard' && <Dashboard />}
+            {activeTab === 'matches' && <MatchesTab />}
+            {activeTab === 'formation' && <FormationTab />}
+            {activeTab === 'players' && <PlayersTab />}
+          </main>
+        </div>
+      );
+    };
+
+    // React 18 방식 렌더링
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<SoccerTeamManager />);
+  </script>
+</body>
+</html>
