@@ -17,7 +17,7 @@
 <script>
 /* -------------------- 앱 상태 -------------------- */
 let state = {
-  activeTab: "players",           // 처음에 선수관리 탭으로 열리게
+  activeTab: "players",
   players: [],
   matches: [],
   formation: { gk: [], def: [], dmf: [], cmf: [], amf: [], fw: [] },
@@ -25,17 +25,11 @@ let state = {
   newPlayer: { name:"", position:"FW" },
   draggedPlayer: null,
   saveStatus: "",
-  playerSearch: ""                // 선수 검색어
+  playerSearch: "",
+  notice: ""           // 화면 상단 안내/에러 표시용
 };
 
-/* -------------------- 초기 데이터 -------------------- */
-const initialPlayers = [
-  { id: 1, name: "심재양", position:"MF", goals:0, assists:0, attendance:0, isPresent:false },
-  { id: 2, name: "이정호", position:"FW", goals:0, assists:0, attendance:0, isPresent:false },
-  { id: 3, name: "하민호", position:"DF", goals:0, assists:0, attendance:0, isPresent:false },
-  { id: 4, name: "하재형", position:"GK", goals:0, assists:0, attendance:0, isPresent:false }
-];
-
+/* -------------------- 초기 데이터(경기만 예시) -------------------- */
 const initialMatches = [
   { id:1, opponent:"JK FC", location:"항공대학교", date:"2024-08-15", result:"W", score:"3-1", goals:3, conceded:1 },
   { id:2, opponent:"블루 유나이티드", location:"월드컵경기장", date:"2024-08-10", result:"L", score:"1-2", goals:1, conceded:2 }
@@ -58,18 +52,22 @@ const icons = {
 function render(){ document.getElementById('root').innerHTML = createApp(); }
 function setState(newState){ state = {...state, ...newState}; render(); autosave(); }
 
+/* -------------------- 공용 유틸 -------------------- */
+function setNotice(msg){ setState({notice: msg}); setTimeout(()=>setState({notice:""}), 2500); }
+
 /* -------------------- 저장/로드 -------------------- */
-function loadData(){
+function loadFromLocal(){
   const saved = localStorage.getItem('soccerTeamData');
-  if(saved){
-    try{
-      const data = JSON.parse(saved);
-      setState({ players: data.players || initialPlayers, matches: data.matches || initialMatches, saveStatus:"✓ 저장된 데이터 불러옴" });
-      setTimeout(()=>setState({saveStatus:""}),2000);
-      return;
-    }catch{}
+  if(!saved) return null;
+  try{
+    const data = JSON.parse(saved);
+    return {
+      players: data.players || [],
+      matches: data.matches || initialMatches
+    };
+  }catch{
+    return null;
   }
-  setState({ players: initialPlayers, matches: initialMatches });
 }
 function autosave(){
   const data = { players: state.players, matches: state.matches, savedAt: new Date().toISOString() };
@@ -85,47 +83,65 @@ function downloadBackup(){
   setState({saveStatus:"✓ 백업 파일 다운로드됨"}); setTimeout(()=>setState({saveStatus:""}),2000);
 }
 
-/* -------------------- 구성원 JSON 불러오기 -------------------- */
-/* 이름 정리: 앞의 '화랑', '화랑_', '화랑-' 등 제거 + 이모지/특수문자 과도한 것 정리 */
+/* -------------------- 이름 정리 -------------------- */
 function sanitizeName(raw){
   if(!raw) return "";
   let s = String(raw).trim();
-  s = s.replace(/^화랑[\s_\-]?/i, "");     // 선행 접두어 제거
-  s = s.replace(/\s{2,}/g, " ");          // 중복 공백 정리
-  // 이모지나 불필요 특수문자 대부분 제거(한글/영문/숫자/공백/._-만 허용)
-  s = s.replace(/[^\p{L}\p{N}\s._-]/gu, "");
+  s = s.replace(/^화랑[\s_\-]?/i, ""); // '화랑', '화랑_', '화랑-' 제거
+  s = s.replace(/\s{2,}/g, " ");
+  s = s.replace(/[^\p{L}\p{N}\s._-]/gu, ""); // 과한 특수문자/이모지 제거
   return s.trim();
 }
 
-/* 파일 선택 핸들러: ["이름", ...] 또는 {members:[...]} 모두 지원 */
-function importMembersFile(ev){
-  const file = ev.target.files[0]; if(!file) return;
-  const reader = new FileReader();
-  reader.onload = (e)=>{
-    try{
-      const json = JSON.parse(e.target.result);
-      const arr = Array.isArray(json) ? json : Array.isArray(json.members) ? json.members : null;
-      if(!arr){ alert("지원 형식이 아닙니다. 배열이나 {members:[...]} 형태로 주세요."); return; }
-      const cleaned = arr.map(sanitizeName).filter(n=>n);
-      // 기존 선수와 이름 기준 병합(있으면 유지, 없으면 추가)
-      const existingByName = new Map(state.players.map(p=>[p.name,p]));
-      const merged = [];
-      cleaned.forEach((name)=>{
-        if(existingByName.has(name)){ merged.push(existingByName.get(name)); existingByName.delete(name); }
-        else{
-          merged.push({ id: Date.now()+Math.random(), name, position:"MF", goals:0, assists:0, attendance:0, isPresent:false });
-        }
-      });
-      // 기존에 남은(명단에서 빠진) 선수들 뒤에 유지할지 여부—여기선 유지
-      existingByName.forEach(v=>merged.push(v));
+/* -------------------- members.json 불러오기 -------------------- */
+/** members.json 예시
+ * ["심재양","이정호","하민호", ...]
+ * 또는 { "members": ["심재양","이정호", ...] }
+ */
+async function loadMembersJson(){
+  try {
+    // 캐시를 막아서 파일 교체 시 바로 반영되도록
+    const res = await fetch('members.json', { cache: 'no-store' });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const raw = await res.json();
 
-      setState({ players: merged, saveStatus:"✓ 구성원 JSON 반영됨" });
-      setTimeout(()=>setState({saveStatus:""}),2000);
-    }catch(err){
-      alert("JSON 파싱 실패: "+err.message);
-    } finally { ev.target.value=""; }
-  };
-  reader.readAsText(file);
+    let names = [];
+    if(Array.isArray(raw)) names = raw;
+    else if (raw && Array.isArray(raw.members)) names = raw.members;
+    else throw new Error('지원 형식 아님 (배열 또는 {members:[...]})');
+
+    const cleaned = names.map(sanitizeName).filter(Boolean);
+
+    // 로컬 저장된 선수와 이름 기준 병합(있으면 유지, 없으면 추가)
+    const existing = state.players && state.players.length ? state.players : [];
+    const existingByName = new Map(existing.map(p=>[p.name,p]));
+    const merged = [];
+
+    cleaned.forEach(name=>{
+      if(existingByName.has(name)){
+        merged.push(existingByName.get(name));
+        existingByName.delete(name);
+      }else{
+        merged.push({
+          id: Date.now()+Math.random(),
+          name,
+          position: "MF",
+          goals: 0,
+          assists: 0,
+          attendance: 0,
+          isPresent: false
+        });
+      }
+    });
+    // 명단에서 빠진 기존 선수는 뒤에 유지(필요 시 제거 로직으로 바꿔도 됨)
+    existingByName.forEach(v=>merged.push(v));
+
+    setState({ players: merged, saveStatus:"✓ members.json 불러옴" });
+    setTimeout(()=>setState({saveStatus:""}),2000);
+  } catch (err) {
+    // 파일 없거나 CORS/file 프로토콜 문제일 수 있음
+    setNotice("members.json 불러오지 못했습니다. (서버로 열었는지 확인)");
+  }
 }
 
 /* -------------------- 선수/출석 -------------------- */
@@ -138,7 +154,7 @@ function addPlayer(){
   });
 }
 function toggleAttendance(id){
-  setState({ players: state.players.map(p=> p.id===id ? {...p, isPresent:!p.isPresent} : p ) });
+  setState({ players: state.players.map(p=> p.id===id ? {...p, isPresent:!p.isPresent, attendance: p.isPresent ? p.attendance : (p.attendance||0)+1 } : p ) });
 }
 function clearAllAttendance(){ setState({ players: state.players.map(p=>({...p, isPresent:false})) }); }
 function setActiveTab(tab){ setState({activeTab:tab}); }
@@ -151,12 +167,12 @@ function addMatch(){
   if(!(m.opponent && m.location && m.date)) return;
   const score = `${m.goals}-${m.conceded}`;
   const newM = { ...m, id: Date.now(), score, goals: parseInt(m.goals)||0, conceded: parseInt(m.conceded)||0 };
-  setState({ matches:[...state.matches, newM], newMatch:{opponent:"",location:"",date:"",result:"",goals:0,conceded:0} });
+  setState({ matches:[...(state.matches||[]), newM], newMatch:{opponent:"",location:"",date:"",result:"",goals:0,conceded:0} });
 }
 
 /* -------------------- 통계 -------------------- */
 function teamStats(){
-  const ms = state.matches;
+  const ms = state.matches || [];
   const matches = ms.length;
   const wins = ms.filter(m=>m.result==="W").length;
   const draws = ms.filter(m=>m.result==="D").length;
@@ -179,6 +195,7 @@ function createApp(){
   <div class="min-h-screen bg-gray-50">
     ${createNav()}
     <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      ${state.notice ? `<div class="mb-4 p-3 rounded bg-yellow-50 text-yellow-800 text-sm">${state.notice}</div>` : ''}
       ${state.activeTab==='dashboard'? createDashboard():''}
       ${state.activeTab==='matches'? createMatches():''}
       ${state.activeTab==='formation'? createFormation():''}
@@ -209,7 +226,7 @@ function createNav(){
 
 function createDashboard(){
   const s = teamStats();
-  const top = [...state.players].sort((a,b)=>b.goals-a.goals).slice(0,5);
+  const top = [...(state.players||[])].sort((a,b)=>b.goals-a.goals).slice(0,5);
   return `
   <div class="space-y-6">
     <div class="bg-gradient-to-r from-green-500 to-blue-600 text-white p-6 rounded-lg">
@@ -307,7 +324,7 @@ function createMatches(){
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-200">
-            ${state.matches.map(m=>`
+            ${(state.matches||[]).map(m=>`
               <tr class="hover:bg-gray-50">
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${m.date}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${m.opponent}</td>
@@ -327,9 +344,8 @@ function createMatches(){
 }
 
 function createFormation(){
-  const present = state.players.filter(p=>p.isPresent);
+  const present = (state.players||[]).filter(p=>p.isPresent);
   const total = Object.values(state.formation).flat().length;
-  // 간단: 출석자만 보여주고 드래그는 기존과 동일(필요시 확장)
   return `
   <div class="space-y-6">
     <div class="bg-white p-6 rounded-lg shadow-md">
@@ -343,25 +359,19 @@ function createFormation(){
   </div>`;
 }
 
-/* ----- 선수관리(검색 + JSON 불러오기 + 출석체크) ----- */
+/* ----- 선수관리(검색 + 출석체크) ----- */
 function createPlayers(){
   const q = state.playerSearch.trim().toLowerCase();
   const list = q ? state.players.filter(p=>p.name.toLowerCase().includes(q)) : state.players;
 
   return `
   <div class="space-y-6">
-    <!-- 상단 도구줄: 구성원 JSON 불러오기 / 검색 -->
+    <!-- 상단 도구줄: 검색/백업 -->
     <div class="bg-white p-4 rounded-lg shadow-md flex flex-col md:flex-row md:items-center gap-3">
-      <div class="flex items-center gap-2">
-        <label class="bg-gray-800 text-white px-3 py-2 rounded-lg cursor-pointer">
-          ${icons.upload} 구성원 JSON 불러오기
-          <input id="membersFile" type="file" accept=".json" class="hidden" onchange="importMembersFile(event)">
-        </label>
-        <button onclick="downloadBackup()" class="bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg text-sm">${icons.download} 현재 데이터 백업</button>
-      </div>
       <div class="md:ml-auto">
         <input class="border rounded-lg px-3 py-2 w-60" placeholder="선수 이름 검색" value="${state.playerSearch}" oninput="setState({playerSearch:this.value})">
       </div>
+      <button onclick="downloadBackup()" class="bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg text-sm">${icons.download} 현재 데이터 백업</button>
     </div>
 
     <!-- 출석 체크 -->
@@ -436,11 +446,17 @@ function createPlayers(){
 }
 
 /* -------------------- 시작 -------------------- */
-document.addEventListener('DOMContentLoaded', ()=>{ 
-  loadData();
-  // 최초 한번만 초기값 세팅(이미 로드 시 setState 호출로 render됨)
+document.addEventListener('DOMContentLoaded', async ()=>{ 
+  // 1) 로컬 저장된 데이터 우선 반영
+  const local = loadFromLocal();
+  setState({
+    players: local && local.players ? local.players : [],
+    matches: local && local.matches ? local.matches : initialMatches
+  });
+
+  // 2) members.json로 명단 병합/초기화 (있으면 반영, 없으면 조용히 패스)
+  await loadMembersJson();
 });
 </script>
 </body>
 </html>
-
