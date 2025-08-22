@@ -60,9 +60,9 @@
     .pitch .box.top { top:10px; }
     .pitch .box.bottom { bottom:10px; }
 
-    /* 드래그 시각 효과(선수칩) */
+    /* 드래그 시각 효과 */
     .player-chip.dragging { opacity: .55; }
-    .dropzone.drag-over { outline: 2px dashed rgba(59,130,246,.9); outline-offset: 4px; }
+    .drop-slot.drag-over { outline: 2px dashed rgba(59,130,246,.9); outline-offset: 4px; }
     
     /* 모바일 네비게이션 스크롤 */
     .nav-scroll {
@@ -79,12 +79,19 @@
 <div id="root"></div>
 
 <script>
-/* -------------------- 앱 상태 -------------------- */
+/* -------------------- 앱 상태 (포메이션 구조 변경) -------------------- */
 let state = {
   activeTab: "dashboard",
   players: [],
   matches: [],
-  formation: { gk: [], def: [], dmf: [], cmf: [], amf: [], fw: [] },
+  formation: {
+    gk: [null],                                    // GK (1명)
+    def: [null, null, null, null, null],          // LB, CB, CB, CB, RB (5명)
+    dmf: [null, null, null],                      // DMF, DMF, DMF (3명)
+    cmf: [null, null, null, null],                // LM, CM, CM, RM (4명)
+    amf: [null, null, null],                      // LW, AM, RW (3명)
+    fw: [null, null]                              // SS, ST (2명)
+  },
   newMatch: { opponent:"", location:"", date:"", result:"", goals:0, conceded:0 },
   newPlayer: { name:"", position:"FW" },
   draggedPlayer: null,
@@ -92,7 +99,17 @@ let state = {
   playerSearch: ""
 };
 
-const maxPositions = { gk: 1, def: 4, dmf: 3, cmf: 4, amf: 3, fw: 3 };
+// 포지션별 라벨 정의
+const positionLabels = {
+  gk: ['GK'],
+  def: ['LB', 'CB', 'CB', 'CB', 'RB'],
+  dmf: ['DMF', 'DMF', 'DMF'],
+  cmf: ['LM', 'CM', 'CM', 'RM'],
+  amf: ['LW', 'AM', 'RW'],
+  fw: ['SS', 'ST']
+};
+
+const maxPositions = { gk: 1, def: 5, dmf: 3, cmf: 4, amf: 3, fw: 2 };
 
 /* -------------------- 초기 데이터 -------------------- */
 const initialMatches = [
@@ -112,6 +129,17 @@ const icons = {
   upload:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M8 12l4-4 4 4M12 8v8"/></svg>',
   download:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M8 12l4 4 4-4M12 16V4"/></svg>',
   refresh:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>'
+};
+
+/* -------------------- 터치 & 드래그 통합 처리 -------------------- */
+let touchData = {
+  isDragging: false,
+  draggedElement: null,
+  draggedPlayer: null,
+  startX: 0,
+  startY: 0,
+  offsetX: 0,
+  offsetY: 0
 };
 
 /* -------------------- 렌더/상태 -------------------- */
@@ -137,6 +165,14 @@ async function loadData(){
     setState({
       players: savedData.players || [],
       matches: savedData.matches || initialMatches,
+      formation: savedData.formation || {
+        gk: [null],
+        def: [null, null, null, null, null],
+        dmf: [null, null, null],
+        cmf: [null, null, null, null],
+        amf: [null, null, null],
+        fw: [null, null]
+      },
       saveStatus:"✓ 저장된 데이터 불러옴"
     });
     setTimeout(()=>setState({saveStatus:""}),1500);
@@ -182,7 +218,12 @@ async function loadData(){
 function safeJSON(s, fallback){ try{ return JSON.parse(s); }catch{ return fallback; } }
 
 function autosave(){
-  const data = { players: state.players, matches: state.matches, savedAt: new Date().toISOString() };
+  const data = { 
+    players: state.players, 
+    matches: state.matches, 
+    formation: state.formation,
+    savedAt: new Date().toISOString() 
+  };
   localStorage.setItem('soccerTeamData', JSON.stringify(data));
 }
 
@@ -193,7 +234,13 @@ function saveData(){
 }
 
 function downloadBackup(){
-  const data = { players: state.players, matches: state.matches, exportedAt: new Date().toISOString(), version:"1.2" };
+  const data = { 
+    players: state.players, 
+    matches: state.matches, 
+    formation: state.formation,
+    exportedAt: new Date().toISOString(), 
+    version:"1.3" 
+  };
   const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); 
@@ -275,6 +322,195 @@ function importMembersFile(ev){
   reader.readAsText(file);
 }
 
+/* -------------------- 드래그&드롭 (포메이션 슬롯 시스템) -------------------- */
+// 드래그 시작 (마우스)
+function handleDragStart(ev, playerId){
+  const player = state.players.find(p=>p.id===playerId);
+  state.draggedPlayer = player;
+  ev.dataTransfer.effectAllowed = "move";
+  ev.currentTarget.classList.add("dragging");
+}
+
+function handleDragEnd(ev){
+  ev.currentTarget.classList.remove("dragging");
+  state.draggedPlayer = null;
+}
+
+function handleDragOver(ev){
+  ev.preventDefault();
+  ev.dataTransfer.dropEffect = "move";
+  ev.currentTarget.classList.add("drag-over");
+}
+
+function handleDragLeave(ev){
+  ev.currentTarget.classList.remove("drag-over");
+}
+
+function handleDrop(ev, position, slotIndex){
+  ev.preventDefault();
+  ev.currentTarget.classList.remove("drag-over");
+  const dragged = state.draggedPlayer;
+  if(!dragged) return;
+  
+  // 이미 배치된 선수인지 확인
+  let alreadyPlaced = false;
+  let currentPos = null;
+  let currentSlot = null;
+  
+  Object.entries(state.formation).forEach(([pos, slots]) => {
+    slots.forEach((player, idx) => {
+      if(player && player.id === dragged.id) {
+        alreadyPlaced = true;
+        currentPos = pos;
+        currentSlot = idx;
+      }
+    });
+  });
+
+  // 해당 슬롯이 이미 차있는지 확인
+  if(state.formation[position][slotIndex] !== null) return;
+
+  const formation = { ...state.formation };
+  
+  // 기존 위치에서 제거 (이미 배치된 경우)
+  if(alreadyPlaced) {
+    formation[currentPos] = [...formation[currentPos]];
+    formation[currentPos][currentSlot] = null;
+  }
+  
+  // 새 위치에 배치
+  formation[position] = [...formation[position]];
+  formation[position][slotIndex] = dragged;
+  
+  setState({ formation });
+}
+
+// 터치 시작
+function handleTouchStart(ev, playerId){
+  ev.preventDefault();
+  const touch = ev.touches[0];
+  const player = state.players.find(p=>p.id===playerId);
+  
+  touchData.isDragging = true;
+  touchData.draggedElement = ev.currentTarget;
+  touchData.draggedPlayer = player;
+  touchData.startX = touch.clientX;
+  touchData.startY = touch.clientY;
+  
+  // 요소의 현재 위치 계산
+  const rect = ev.currentTarget.getBoundingClientRect();
+  touchData.offsetX = touch.clientX - rect.left;
+  touchData.offsetY = touch.clientY - rect.top;
+  
+  // 시각적 피드백
+  ev.currentTarget.classList.add("dragging");
+  ev.currentTarget.style.position = "fixed";
+  ev.currentTarget.style.zIndex = "1000";
+  ev.currentTarget.style.pointerEvents = "none";
+  
+  // 터치 이벤트 등록
+  document.addEventListener('touchmove', handleTouchMove, {passive: false});
+  document.addEventListener('touchend', handleTouchEnd);
+}
+
+// 터치 이동
+function handleTouchMove(ev){
+  if(!touchData.isDragging) return;
+  ev.preventDefault();
+  
+  const touch = ev.touches[0];
+  const element = touchData.draggedElement;
+  
+  // 요소 위치 업데이트
+  element.style.left = (touch.clientX - touchData.offsetX) + 'px';
+  element.style.top = (touch.clientY - touchData.offsetY) + 'px';
+  
+  // 드롭 슬롯 하이라이트
+  const dropSlots = document.querySelectorAll('.drop-slot');
+  dropSlots.forEach(slot => slot.classList.remove('drag-over'));
+  
+  const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+  const dropSlot = elementBelow?.closest('.drop-slot');
+  if(dropSlot && dropSlot.dataset.position && dropSlot.dataset.slotIndex !== undefined) {
+    const position = dropSlot.dataset.position;
+    const slotIndex = parseInt(dropSlot.dataset.slotIndex);
+    // 빈 슬롯인 경우에만 하이라이트
+    if(state.formation[position][slotIndex] === null) {
+      dropSlot.classList.add('drag-over');
+    }
+  }
+}
+
+// 터치 끝
+function handleTouchEnd(ev){
+  if(!touchData.isDragging) return;
+  
+  const touch = ev.changedTouches[0];
+  const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+  const dropSlot = elementBelow?.closest('.drop-slot');
+  
+  // 드롭 처리
+  if(dropSlot && touchData.draggedPlayer) {
+    const position = dropSlot.dataset.position;
+    const slotIndex = parseInt(dropSlot.dataset.slotIndex);
+    
+    if(position !== undefined && slotIndex !== undefined) {
+      // 이미 배치된 선수인지 확인
+      let alreadyPlaced = false;
+      let currentPos = null;
+      let currentSlot = null;
+      
+      Object.entries(state.formation).forEach(([pos, slots]) => {
+        slots.forEach((player, idx) => {
+          if(player && player.id === touchData.draggedPlayer.id) {
+            alreadyPlaced = true;
+            currentPos = pos;
+            currentSlot = idx;
+          }
+        });
+      });
+
+      // 해당 슬롯이 비어있는 경우에만 배치
+      if(state.formation[position][slotIndex] === null) {
+        const formation = { ...state.formation };
+        
+        // 기존 위치에서 제거
+        if(alreadyPlaced) {
+          formation[currentPos] = [...formation[currentPos]];
+          formation[currentPos][currentSlot] = null;
+        }
+        
+        // 새 위치에 배치
+        formation[position] = [...formation[position]];
+        formation[position][slotIndex] = touchData.draggedPlayer;
+        
+        setState({ formation });
+      }
+    }
+  }
+  
+  // 정리
+  if(touchData.draggedElement) {
+    touchData.draggedElement.classList.remove("dragging");
+    touchData.draggedElement.style.position = "";
+    touchData.draggedElement.style.zIndex = "";
+    touchData.draggedElement.style.pointerEvents = "";
+    touchData.draggedElement.style.left = "";
+    touchData.draggedElement.style.top = "";
+  }
+  
+  document.querySelectorAll('.drop-slot').forEach(slot => {
+    slot.classList.remove('drag-over');
+  });
+  
+  document.removeEventListener('touchmove', handleTouchMove);
+  document.removeEventListener('touchend', handleTouchEnd);
+  
+  touchData.isDragging = false;
+  touchData.draggedElement = null;
+  touchData.draggedPlayer = null;
+}
+
 /* -------------------- 선수/출석 -------------------- */
 function addPlayer(){
   const name = sanitizeName(state.newPlayer.name);
@@ -338,155 +574,26 @@ function teamStats(){
   };
 }
 
-/* -------------------- 터치 & 드래그 통합 처리 -------------------- */
-let touchData = {
-  isDragging: false,
-  draggedElement: null,
-  draggedPlayer: null,
-  startX: 0,
-  startY: 0,
-  offsetX: 0,
-  offsetY: 0
-};
-
-// 드래그 시작 (마우스)
-function handleDragStart(ev, playerId){
-  const player = state.players.find(p=>p.id===playerId);
-  state.draggedPlayer = player;
-  ev.dataTransfer.effectAllowed = "move";
-  ev.currentTarget.classList.add("dragging");
-}
-
-function handleDragEnd(ev){
-  ev.currentTarget.classList.remove("dragging");
-  state.draggedPlayer = null;
-}
-
-function handleDragOver(ev){
-  ev.preventDefault();
-  ev.dataTransfer.dropEffect = "move";
-  ev.currentTarget.classList.add("drag-over");
-}
-
-function handleDragLeave(ev){
-  ev.currentTarget.classList.remove("drag-over");
-}
-
-function handleDrop(ev, position){
-  ev.preventDefault();
-  ev.currentTarget.classList.remove("drag-over");
-  const dragged = state.draggedPlayer;
-  if(!dragged) return;
-  
-  const already = Object.values(state.formation).flat().some(p=>p.id===dragged.id);
-  const total = Object.values(state.formation).flat().length;
-  if(already) return;
-  if(total >= 11) return;
-  if(state.formation[position].length >= maxPositions[position]) return;
-
+/* -------------------- 포메이션 슬롯 관련 함수들 -------------------- */
+function removeFromFormationSlot(position, slotIndex){
   const formation = { ...state.formation };
-  formation[position] = [...formation[position], dragged];
+  formation[position] = [...formation[position]];
+  formation[position][slotIndex] = null;
   setState({ formation });
 }
 
-// 터치 시작
-function handleTouchStart(ev, playerId){
-  ev.preventDefault();
-  const touch = ev.touches[0];
-  const player = state.players.find(p=>p.id===playerId);
-  
-  touchData.isDragging = true;
-  touchData.draggedElement = ev.currentTarget;
-  touchData.draggedPlayer = player;
-  touchData.startX = touch.clientX;
-  touchData.startY = touch.clientY;
-  
-  // 요소의 현재 위치 계산
-  const rect = ev.currentTarget.getBoundingClientRect();
-  touchData.offsetX = touch.clientX - rect.left;
-  touchData.offsetY = touch.clientY - rect.top;
-  
-  // 시각적 피드백
-  ev.currentTarget.classList.add("dragging");
-  ev.currentTarget.style.position = "fixed";
-  ev.currentTarget.style.zIndex = "1000";
-  ev.currentTarget.style.pointerEvents = "none";
-  
-  // 터치 이벤트 등록
-  document.addEventListener('touchmove', handleTouchMove, {passive: false});
-  document.addEventListener('touchend', handleTouchEnd);
-}
-
-// 터치 이동
-function handleTouchMove(ev){
-  if(!touchData.isDragging) return;
-  ev.preventDefault();
-  
-  const touch = ev.touches[0];
-  const element = touchData.draggedElement;
-  
-  // 요소 위치 업데이트
-  element.style.left = (touch.clientX - touchData.offsetX) + 'px';
-  element.style.top = (touch.clientY - touchData.offsetY) + 'px';
-  
-  // 드롭 존 하이라이트
-  const dropZones = document.querySelectorAll('.dropzone');
-  dropZones.forEach(zone => zone.classList.remove('drag-over'));
-  
-  const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
-  const dropZone = elementBelow?.closest('.dropzone');
-  if(dropZone) {
-    dropZone.classList.add('drag-over');
-  }
-}
-
-// 터치 끝
-function handleTouchEnd(ev){
-  if(!touchData.isDragging) return;
-  
-  const touch = ev.changedTouches[0];
-  const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
-  const dropZone = elementBelow?.closest('.dropzone');
-  
-  // 드롭 처리
-  if(dropZone && touchData.draggedPlayer) {
-    const position = dropZone.dataset.position;
-    if(position) {
-      const already = Object.values(state.formation).flat().some(p=>p.id===touchData.draggedPlayer.id);
-      const total = Object.values(state.formation).flat().length;
-      
-      if(!already && total < 11 && state.formation[position].length < maxPositions[position]) {
-        const formation = { ...state.formation };
-        formation[position] = [...formation[position], touchData.draggedPlayer];
-        setState({ formation });
-      }
+function clearFormation(){
+  setState({ 
+    formation: {
+      gk: [null],
+      def: [null, null, null, null, null],
+      dmf: [null, null, null],
+      cmf: [null, null, null, null],
+      amf: [null, null, null],
+      fw: [null, null]
     }
-  }
-  
-  // 정리
-  if(touchData.draggedElement) {
-    touchData.draggedElement.classList.remove("dragging");
-    touchData.draggedElement.style.position = "";
-    touchData.draggedElement.style.zIndex = "";
-    touchData.draggedElement.style.pointerEvents = "";
-    touchData.draggedElement.style.left = "";
-    touchData.draggedElement.style.top = "";
-  }
-  
-  document.querySelectorAll('.dropzone').forEach(zone => {
-    zone.classList.remove('drag-over');
   });
-  
-  // 이벤트 리스너 제거
-  document.removeEventListener('touchmove', handleTouchMove);
-  document.removeEventListener('touchend', handleTouchEnd);
-  
-  // 상태 초기화
-  touchData.isDragging = false;
-  touchData.draggedElement = null;
-  touchData.draggedPlayer = null;
 }
-
 
 /* -------------------- UI 생성 -------------------- */
 function createApp(){
@@ -656,9 +763,10 @@ function createMatches(){
   </div>`;
 }
 
+/* ===== 포메이션 (완전히 새로운 슬롯 시스템) ===== */
 function createFormation(){
   const present = getPresentPlayers();
-  const total = Object.values(state.formation).flat().length;
+  const total = Object.values(state.formation).flat().filter(p => p !== null).length;
 
   return `
   <div class="space-y-4 sm:space-y-6">
@@ -669,16 +777,21 @@ function createFormation(){
       </div>
 
       <div class="flex flex-wrap gap-2 mb-2">
-        ${present.map(p=>`
-          <div class="player-chip bg-blue-100 text-blue-800 px-2 sm:px-3 py-1 sm:py-2 rounded-full text-xs sm:text-sm font-medium cursor-move hover:bg-blue-200 transition-colors flex items-center select-none"
-               draggable="true" 
-               ondragstart="handleDragStart(event, ${p.id})" 
-               ondragend="handleDragEnd(event)"
-               ontouchstart="handleTouchStart(event, ${p.id})"
+        ${present.map(p=>{
+          // 이미 배치된 선수인지 확인
+          const isPlaced = Object.values(state.formation).flat().some(player => player && player.id === p.id);
+          return `
+          <div class="player-chip ${isPlaced ? 'bg-gray-200 text-gray-500' : 'bg-blue-100 text-blue-800'} px-2 sm:px-3 py-1 sm:py-2 rounded-full text-xs sm:text-sm font-medium ${isPlaced ? 'cursor-not-allowed' : 'cursor-move hover:bg-blue-200'} transition-colors flex items-center select-none"
+               ${!isPlaced ? 'draggable="true"' : ''}
+               ${!isPlaced ? `ondragstart="handleDragStart(event, ${p.id})"` : ''}
+               ${!isPlaced ? `ondragend="handleDragEnd(event)"` : ''}
+               ${!isPlaced ? `ontouchstart="handleTouchStart(event, ${p.id})"` : ''}
                style="touch-action: none;">
             <span class="mr-1">${p.name}</span>
             <span class="text-xs opacity-75">(${p.position})</span>
-          </div>`).join('')}
+            ${isPlaced ? '<span class="ml-1 text-xs">✓</span>' : ''}
+          </div>`;
+        }).join('')}
       </div>
       ${present.length===0 ? '<p class="text-gray-500 text-xs sm:text-sm">출석한 선수가 없습니다. 선수 관리 탭에서 출석 체크 후 드래그하세요.</p>' : ''}
     </div>
@@ -693,12 +806,12 @@ function createFormation(){
         <div class="box bottom"></div>
 
         <div class="relative h-full flex flex-col justify-between py-8 sm:py-16">
-          ${positionRow('fw', '공격수', 'bg-red-500', state.formation.fw)}
-          ${positionRow('amf', '공격형 MF', 'bg-orange-500', state.formation.amf)}
-          ${positionRow('cmf', '중앙 MF', 'bg-blue-500', state.formation.cmf)}
-          ${positionRow('dmf', '수비형 MF', 'bg-teal-500', state.formation.dmf)}
-          ${positionRow('def', '수비수', 'bg-green-500', state.formation.def)}
-          ${positionRow('gk', '골키퍼', 'bg-purple-500', state.formation.gk)}
+          ${createPositionRow('fw', '공격수', 'bg-red-500', state.formation.fw)}
+          ${createPositionRow('amf', '공격형 MF', 'bg-orange-500', state.formation.amf)}
+          ${createPositionRow('cmf', '중앙 MF', 'bg-blue-500', state.formation.cmf)}
+          ${createPositionRow('dmf', '수비형 MF', 'bg-teal-500', state.formation.dmf)}
+          ${createPositionRow('def', '수비수', 'bg-green-500', state.formation.def)}
+          ${createPositionRow('gk', '골키퍼', 'bg-purple-500', state.formation.gk)}
         </div>
       </div>
 
@@ -708,8 +821,8 @@ function createFormation(){
         </span>
       </div>
 
-      <div class="mt-3 sm:mt-4 text-center">
-        <button onclick="setState({ formation:{ gk:[], def:[], dmf:[], cmf:[], amf:[], fw:[] } })"
+      <div class="mt-3 sm:mt-4 text-center space-x-2">
+        <button onclick="clearFormation()"
                 class="bg-gray-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-gray-700 text-xs sm:text-sm">
           포메이션 초기화
         </button>
@@ -718,28 +831,40 @@ function createFormation(){
   </div>`;
 }
 
-function positionRow(position, label, color, arr){
-  const spacing = position==='def' ? 'space-x-2 sm:space-x-4' : position==='dmf' ? 'space-x-4 sm:space-x-8' : 'space-x-3 sm:space-x-6';
+function createPositionRow(position, label, color, slots){
+  const labels = positionLabels[position];
+  const spacing = position === 'def' ? 'space-x-1 sm:space-x-2' : 
+                  position === 'dmf' ? 'space-x-4 sm:space-x-8' : 
+                  position === 'cmf' ? 'space-x-2 sm:space-x-4' :
+                  position === 'amf' ? 'space-x-4 sm:space-x-8' : 
+                  'space-x-6 sm:space-x-12';
+  
   return `
-  <div class="dropzone flex justify-center ${spacing} min-h-[50px] sm:min-h-[68px] items-center"
-       data-position="${position}"
-       ondragover="handleDragOver(event)" 
-       ondragleave="handleDragLeave(event)" 
-       ondrop="handleDrop(event, '${position}')">
-    ${arr.map((p,idx)=>`
-      <div class="w-14 h-14 sm:w-20 sm:h-20 ${color} rounded-full flex items-center justify-center text-white text-xs font-bold shadow-md cursor-pointer"
-           title="클릭하여 제거" onclick="removeFromFormation('${position}', ${idx})">
-        <span class="text-center p-1 leading-tight text-xs">${p.name}<br/><span class="text-xs opacity-75">(${position.toUpperCase()})</span></span>
-      </div>`).join('')}
-    ${arr.length===0 ? `<div class="text-center text-white/80 text-xs sm:text-sm py-2">${label} 영역</div>` : ''}
+  <div class="flex justify-center ${spacing} min-h-[50px] sm:min-h-[68px] items-center">
+    ${slots.map((player, idx) => `
+      <div class="drop-slot flex flex-col items-center"
+           data-position="${position}" 
+           data-slot-index="${idx}"
+           ondragover="handleDragOver(event)" 
+           ondragleave="handleDragLeave(event)" 
+           ondrop="handleDrop(event, '${position}', ${idx})">
+        
+        ${player ? `
+          <div class="w-12 h-12 sm:w-16 sm:h-16 ${color} rounded-full flex items-center justify-center text-white text-xs font-bold shadow-md cursor-pointer relative"
+               title="클릭하여 제거" onclick="removeFromFormationSlot('${position}', ${idx})">
+            <span class="text-center leading-tight">${player.name}</span>
+            <div class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-xs text-white">×</div>
+          </div>
+        ` : `
+          <div class="w-12 h-12 sm:w-16 sm:h-16 border-2 border-dashed border-white/60 rounded-full flex items-center justify-center text-white/80 text-xs">
+            <span class="text-center">빈칸</span>
+          </div>
+        `}
+        
+        <div class="text-white/90 text-xs mt-1 font-medium">${labels[idx]}</div>
+      </div>
+    `).join('')}
   </div>`;
-}
-
-
-function removeFromFormation(position, index){
-  const f = { ...state.formation };
-  f[position] = f[position].filter((_,i)=>i!==index);
-  setState({ formation: f });
 }
 
 function createPlayers(){
@@ -843,4 +968,3 @@ document.addEventListener('DOMContentLoaded', ()=>{ loadData(); render(); });
 </script>
 </body>
 </html>
-
