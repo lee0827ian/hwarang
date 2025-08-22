@@ -338,7 +338,18 @@ function teamStats(){
   };
 }
 
-/* -------------------- 드래그&드롭 (포메이션) -------------------- */
+/* -------------------- 터치 & 드래그 통합 처리 -------------------- */
+let touchData = {
+  isDragging: false,
+  draggedElement: null,
+  draggedPlayer: null,
+  startX: 0,
+  startY: 0,
+  offsetX: 0,
+  offsetY: 0
+};
+
+// 드래그 시작 (마우스)
 function handleDragStart(ev, playerId){
   const player = state.players.find(p=>p.id===playerId);
   state.draggedPlayer = player;
@@ -377,6 +388,105 @@ function handleDrop(ev, position){
   formation[position] = [...formation[position], dragged];
   setState({ formation });
 }
+
+// 터치 시작
+function handleTouchStart(ev, playerId){
+  ev.preventDefault();
+  const touch = ev.touches[0];
+  const player = state.players.find(p=>p.id===playerId);
+  
+  touchData.isDragging = true;
+  touchData.draggedElement = ev.currentTarget;
+  touchData.draggedPlayer = player;
+  touchData.startX = touch.clientX;
+  touchData.startY = touch.clientY;
+  
+  // 요소의 현재 위치 계산
+  const rect = ev.currentTarget.getBoundingClientRect();
+  touchData.offsetX = touch.clientX - rect.left;
+  touchData.offsetY = touch.clientY - rect.top;
+  
+  // 시각적 피드백
+  ev.currentTarget.classList.add("dragging");
+  ev.currentTarget.style.position = "fixed";
+  ev.currentTarget.style.zIndex = "1000";
+  ev.currentTarget.style.pointerEvents = "none";
+  
+  // 터치 이벤트 등록
+  document.addEventListener('touchmove', handleTouchMove, {passive: false});
+  document.addEventListener('touchend', handleTouchEnd);
+}
+
+// 터치 이동
+function handleTouchMove(ev){
+  if(!touchData.isDragging) return;
+  ev.preventDefault();
+  
+  const touch = ev.touches[0];
+  const element = touchData.draggedElement;
+  
+  // 요소 위치 업데이트
+  element.style.left = (touch.clientX - touchData.offsetX) + 'px';
+  element.style.top = (touch.clientY - touchData.offsetY) + 'px';
+  
+  // 드롭 존 하이라이트
+  const dropZones = document.querySelectorAll('.dropzone');
+  dropZones.forEach(zone => zone.classList.remove('drag-over'));
+  
+  const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+  const dropZone = elementBelow?.closest('.dropzone');
+  if(dropZone) {
+    dropZone.classList.add('drag-over');
+  }
+}
+
+// 터치 끝
+function handleTouchEnd(ev){
+  if(!touchData.isDragging) return;
+  
+  const touch = ev.changedTouches[0];
+  const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
+  const dropZone = elementBelow?.closest('.dropzone');
+  
+  // 드롭 처리
+  if(dropZone && touchData.draggedPlayer) {
+    const position = dropZone.dataset.position;
+    if(position) {
+      const already = Object.values(state.formation).flat().some(p=>p.id===touchData.draggedPlayer.id);
+      const total = Object.values(state.formation).flat().length;
+      
+      if(!already && total < 11 && state.formation[position].length < maxPositions[position]) {
+        const formation = { ...state.formation };
+        formation[position] = [...formation[position], touchData.draggedPlayer];
+        setState({ formation });
+      }
+    }
+  }
+  
+  // 정리
+  if(touchData.draggedElement) {
+    touchData.draggedElement.classList.remove("dragging");
+    touchData.draggedElement.style.position = "";
+    touchData.draggedElement.style.zIndex = "";
+    touchData.draggedElement.style.pointerEvents = "";
+    touchData.draggedElement.style.left = "";
+    touchData.draggedElement.style.top = "";
+  }
+  
+  document.querySelectorAll('.dropzone').forEach(zone => {
+    zone.classList.remove('drag-over');
+  });
+  
+  // 이벤트 리스너 제거
+  document.removeEventListener('touchmove', handleTouchMove);
+  document.removeEventListener('touchend', handleTouchEnd);
+  
+  // 상태 초기화
+  touchData.isDragging = false;
+  touchData.draggedElement = null;
+  touchData.draggedPlayer = null;
+}
+
 
 /* -------------------- UI 생성 -------------------- */
 function createApp(){
@@ -560,8 +670,12 @@ function createFormation(){
 
       <div class="flex flex-wrap gap-2 mb-2">
         ${present.map(p=>`
-          <div class="player-chip bg-blue-100 text-blue-800 px-2 sm:px-3 py-1 sm:py-2 rounded-full text-xs sm:text-sm font-medium cursor-move hover:bg-blue-200 transition-colors flex items-center"
-               draggable="true" ondragstart="handleDragStart(event, ${p.id})" ondragend="handleDragEnd(event)">
+          <div class="player-chip bg-blue-100 text-blue-800 px-2 sm:px-3 py-1 sm:py-2 rounded-full text-xs sm:text-sm font-medium cursor-move hover:bg-blue-200 transition-colors flex items-center select-none"
+               draggable="true" 
+               ondragstart="handleDragStart(event, ${p.id})" 
+               ondragend="handleDragEnd(event)"
+               ontouchstart="handleTouchStart(event, ${p.id})"
+               style="touch-action: none;">
             <span class="mr-1">${p.name}</span>
             <span class="text-xs opacity-75">(${p.position})</span>
           </div>`).join('')}
@@ -590,9 +704,7 @@ function createFormation(){
 
       <div class="mt-3 sm:mt-4 text-center">
         <span class="text-xs sm:text-sm font-medium ${total===11?'text-green-600': total>11?'text-red-600':'text-gray-700'}">
-          필드 선수: ${total}/11명
-          ${total>11?' (인원 초과!)':''}
-          ${total===11?' ✓ 완료':''}
+          필드 선수: ${total}/11명 ${total>11?' (인원 초과!)':''} ${total===11?' ✓ 완료':''}
         </span>
       </div>
 
@@ -610,15 +722,19 @@ function positionRow(position, label, color, arr){
   const spacing = position==='def' ? 'space-x-2 sm:space-x-4' : position==='dmf' ? 'space-x-4 sm:space-x-8' : 'space-x-3 sm:space-x-6';
   return `
   <div class="dropzone flex justify-center ${spacing} min-h-[50px] sm:min-h-[68px] items-center"
-       ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${position}')">
+       data-position="${position}"
+       ondragover="handleDragOver(event)" 
+       ondragleave="handleDragLeave(event)" 
+       ondrop="handleDrop(event, '${position}')">
     ${arr.map((p,idx)=>`
       <div class="w-14 h-14 sm:w-20 sm:h-20 ${color} rounded-full flex items-center justify-center text-white text-xs font-bold shadow-md cursor-pointer"
            title="클릭하여 제거" onclick="removeFromFormation('${position}', ${idx})">
-        <span class="text-center p-1 leading-tight text-xs sm:text-xs">${p.name}<br/><span class="text-xs opacity-75">(${position.toUpperCase()})</span></span>
+        <span class="text-center p-1 leading-tight text-xs">${p.name}<br/><span class="text-xs opacity-75">(${position.toUpperCase()})</span></span>
       </div>`).join('')}
     ${arr.length===0 ? `<div class="text-center text-white/80 text-xs sm:text-sm py-2">${label} 영역</div>` : ''}
   </div>`;
 }
+
 
 function removeFromFormation(position, index){
   const f = { ...state.formation };
@@ -727,3 +843,4 @@ document.addEventListener('DOMContentLoaded', ()=>{ loadData(); render(); });
 </script>
 </body>
 </html>
+
