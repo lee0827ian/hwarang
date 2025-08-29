@@ -61,13 +61,38 @@
       }
     }
 
-    /* 미니 프리뷰 피치 */
-    .mini-pitch{ position:relative; height:120px; background:linear-gradient(#bfe3bf,#9bd49b); border-radius:10px; overflow:hidden; box-shadow:inset 0 0 0 2px rgba(255,255,255,.5) }
+    /* 미니 프리뷰 피치 - 개선된 스타일 */
+    .mini-pitch{ 
+      position:relative; 
+      height:140px; /* 높이 약간 증가 */
+      background:linear-gradient(#bfe3bf,#9bd49b); 
+      border-radius:10px; 
+      overflow:hidden; 
+      box-shadow:inset 0 0 0 2px rgba(255,255,255,.5);
+    }
     .mini-pitch .half-line{ position:absolute; top:50%; left:0; right:0; height:2px; background:rgba(255,255,255,.7); transform:translateY(-50%) }
     .mini-pitch .box{ position:absolute; left:50%; width:120px; height:52px; border:2px solid rgba(255,255,255,.7); transform:translateX(-50%); background:rgba(255,255,255,.06) }
-    .mini-pitch .box.top{ top:6px } .mini-pitch .box.bottom{ bottom:6px }
-    .mini-row{ position:absolute; left:8px; right:8px; display:grid; place-items:center; }
-    .mini-badge{ font-size:10px; line-height:1; color:#fff; background:rgba(59,130,246,.9); padding:3px 6px; border-radius:999px; white-space:nowrap; max-width:90px; overflow:hidden; text-overflow:ellipsis; }
+    .mini-pitch .box.top{ top:6px } 
+    .mini-pitch .box.bottom{ bottom:6px }
+    .mini-row{ 
+      position:absolute; 
+      display:grid; 
+      place-items:center; 
+    }
+    .mini-badge{ 
+      font-size:10px; 
+      line-height:1.2; 
+      color:#fff; 
+      background:rgba(59,130,246,.9); 
+      padding:3px 6px; 
+      border-radius:999px; 
+      white-space:nowrap; 
+      max-width:90px; 
+      overflow:hidden; 
+      text-overflow:ellipsis; 
+      font-weight: 500;
+      border: 1px solid rgba(255,255,255,0.3);
+    }
 
     /* 길게 누르기 힌트 감안한 선택 방지 */
     .no-select{ user-select:none; -webkit-user-select:none; }
@@ -556,7 +581,7 @@ function createFormation(){
 
   return `
   <div class="space-y-4 sm:space-y-6">
-    <!-- 상단: 쿼터 컨트롤 -->
+    <!-- 상단: 쿼터 컨트롤 - 간소화 -->
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div class="flex items-center gap-2">
@@ -564,9 +589,6 @@ function createFormation(){
           ${[1,2,3,4].map(n=>`
             <button onclick="setCurrentQuarter(${n})"
               class="px-3 py-2 rounded-lg text-sm font-medium transition-all ${state.currentQuarter===n?'bg-blue-600 text-white shadow-md':'bg-gray-100 hover:bg-gray-200'}">${n}</button>`).join('')}
-        </div>
-        <div class="flex items-center gap-2">
-          <button onclick="saveCurrentQuarter()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm flex items-center hover:bg-blue-700 transition-all">${icons.save}<span class="ml-2">현재 쿼터 저장</span></button>
         </div>
       </div>
       <div class="mt-3 flex items-center justify-between text-sm">
@@ -614,8 +636,14 @@ function createFormation(){
         </span>
       </div>
 
-      <div class="mt-4 text-center">
-        <button onclick="clearFormation()" class="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 text-sm transition-all hover:scale-105">${icons.trash}<span class="ml-2">포메이션 초기화</span></button>
+      <!-- 포메이션 액션 버튼들 - 현재쿼터저장 버튼 이동 -->
+      <div class="mt-4 flex flex-col sm:flex-row justify-center items-center gap-3">
+        <button onclick="saveCurrentQuarter()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm flex items-center hover:bg-blue-700 transition-all hover:scale-105">
+          ${icons.save}<span class="ml-2">${state.currentQuarter}쿼터 저장</span>
+        </button>
+        <button onclick="clearFormation()" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 text-sm transition-all hover:scale-105">
+          ${icons.trash}<span class="ml-2">포메이션 초기화</span>
+        </button>
       </div>
     </div>
 
@@ -668,7 +696,7 @@ function createPositionRow(position){
   </div>`;
 }
 
-/* 쿼터 프리뷰 카드 (세로로 1,2,3,4) */
+/* 쿼터 프리뷰 카드 - 개선된 버전 */
 function createQuarterPreview(n){
   const q = state.quarters[n-1];
   const title = `${n}쿼터`;
@@ -696,17 +724,25 @@ function createQuarterPreview(n){
 }
 
 function miniRows(q){
-  // y 위치: 위에서부터 fw, amf, cmf, dmf, def, gk 순으로 고정
-  const positions = rowOrder;
-  const yPerc = [10, 28, 46, 64, 82, 94]; // 대략적 줄 위치(%)
+  if (!q) return ''; // 비어있으면 아무것도 표시하지 않음
+  
+  // y 위치: 위에서부터 fw, amf, cmf, dmf, def, gk 순으로 고정 (골키퍼 포함)
+  const positions = ['fw', 'amf', 'cmf', 'dmf', 'def', 'gk']; // 골키퍼 명시적 포함
+  const yPerc = [8, 24, 40, 56, 72, 88]; // 골키퍼까지 고려한 위치 조정
+  
   return positions.map((pos,i)=>{
-    const arr = q ? q[pos] : new Array((state.formation[pos]||[]).length).fill(null);
-    const cols = arr.length||1;
-    const left = 8, right = 8; // 좌우 여백
-    const rowStyle = `top:${yPerc[i]}%; left:${left}px; right:${right}px; grid-template-columns: repeat(${cols},1fr)`;
+    const arr = q[pos] || [];
+    const playersInPosition = arr.filter(p => p !== null); // null이 아닌 선수만 필터링
+    
+    if (playersInPosition.length === 0) return ''; // 해당 포지션에 선수가 없으면 표시하지 않음
+    
+    const cols = playersInPosition.length;
+    const left = 8, right = 8;
+    const rowStyle = `top:${yPerc[i]}%; left:${left}px; right:${right}px; grid-template-columns: repeat(${cols},1fr); gap: 4px;`;
+    
     return `
       <div class="mini-row" style="${rowStyle}">
-        ${arr.map(p=> `<div class="mini-badge">${p?p.name:'-'}</div>`).join('')}
+        ${playersInPosition.map(p=> `<div class="mini-badge" style="font-size: ${cols > 3 ? '9px' : '10px'};">${p.name}</div>`).join('')}
       </div>`;
   }).join('');
 }
