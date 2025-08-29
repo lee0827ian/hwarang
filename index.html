@@ -30,14 +30,36 @@
     .nav-scroll{ scrollbar-width:none; -ms-overflow-style:none }
     .nav-scroll::-webkit-scrollbar{ display:none }
 
-    /* 균형 그리드 (슬롯 수만큼 동일 분할) */
-    .row-grid { display:grid; align-items:center; }
-    .row-grid.cols-1{ grid-template-columns: repeat(1, 1fr); }
-    .row-grid.cols-2{ grid-template-columns: repeat(2, 1fr); }
-    .row-grid.cols-3{ grid-template-columns: repeat(3, 1fr); }
-    .row-grid.cols-4{ grid-template-columns: repeat(4, 1fr); }
-    .row-grid.cols-5{ grid-template-columns: repeat(5, 1fr); }
-    .row-grid .cell{ display:flex; flex-direction:column; align-items:center; gap:4px; }
+    /* 균등 그리드 - 개선된 버전 */
+    .row-grid { 
+      display:grid; 
+      align-items:center; 
+      width: 100%;
+      gap: 8px;
+    }
+    .row-grid.cols-1{ grid-template-columns: 1fr; }
+    .row-grid.cols-2{ grid-template-columns: 1fr 1fr; }
+    .row-grid.cols-3{ grid-template-columns: 1fr 1fr 1fr; }
+    .row-grid.cols-4{ grid-template-columns: 1fr 1fr 1fr 1fr; }
+    .row-grid.cols-5{ grid-template-columns: 1fr 1fr 1fr 1fr 1fr; }
+    
+    .row-grid .cell{ 
+      display:flex; 
+      flex-direction:column; 
+      align-items:center; 
+      justify-content:center;
+      gap:4px; 
+      min-height: 80px;
+    }
+    
+    @media (min-width:640px) {
+      .row-grid {
+        gap: 12px;
+      }
+      .row-grid .cell {
+        min-height: 100px;
+      }
+    }
 
     /* 미니 프리뷰 피치 */
     .mini-pitch{ position:relative; height:120px; background:linear-gradient(#bfe3bf,#9bd49b); border-radius:10px; overflow:hidden; box-shadow:inset 0 0 0 2px rgba(255,255,255,.5) }
@@ -49,6 +71,27 @@
 
     /* 길게 누르기 힌트 감안한 선택 방지 */
     .no-select{ user-select:none; -webkit-user-select:none; }
+    
+    /* 플레이어 칩 호버 효과 개선 */
+    .player-chip-field {
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    .player-chip-field:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    /* 빈 슬롯 스타일 개선 */
+    .empty-slot {
+      border: 2px dashed rgba(255,255,255,0.4);
+      background: rgba(255,255,255,0.1);
+      transition: all 0.2s ease;
+    }
+    .empty-slot:hover {
+      border-color: rgba(255,255,255,0.7);
+      background: rgba(255,255,255,0.2);
+    }
   </style>
 </head>
 <body>
@@ -71,7 +114,6 @@ let state = {
   // 쿼터 저장소 (1~4). 각 항목은 formation deep copy
   quarters: [null, null, null, null],
   currentQuarter: 1,
-
   newMatch: { opponent:"", location:"", date:"", result:"", goals:0, conceded:0 },
   newPlayer: { name:"", position:"FW" },
   draggedPlayer: null,
@@ -80,6 +122,7 @@ let state = {
   ui: { pickerOpen:false, pickerPos:null, pickerSlot:null, pickerSearch:"" },
   swapBuffer: null
 };
+
 const positionLabels = {
   gk: ['GK'],
   def: ['LB','CB','CB','RB'],
@@ -129,9 +172,9 @@ async function loadData(){
       formation: savedData.formation || state.formation,
       quarters: savedData.quarters || [null,null,null,null],
       currentQuarter: savedData.currentQuarter || 1,
-      saveStatus:"✓ 저장된 데이터 불러옴"
+      saveStatus:"✅ 저장된 데이터를 불러왔습니다"
     });
-    setTimeout(()=>setState({saveStatus:""}),1200);
+    setTimeout(()=>setState({saveStatus:""}),2000);
   }
 
   // members.json 병합
@@ -149,8 +192,8 @@ async function loadData(){
         else merged.push({ id: Date.now()+Math.random(), name:n, position:"MF", goals:0, assists:0, attendance:0, isPresent:false });
       });
       byName.forEach(v=>merged.push(v));
-      setState({ players: merged, saveStatus:"✓ members.json 연동됨" });
-      setTimeout(()=>setState({saveStatus:""}),1000);
+      setState({ players: merged, saveStatus:"✅ members.json과 연동되었습니다" });
+      setTimeout(()=>setState({saveStatus:""}),2000);
     }
   }catch{}
 
@@ -164,14 +207,19 @@ function autosave(){
   };
   localStorage.setItem('soccerTeamData', JSON.stringify(data));
 }
-function saveData(){ autosave(); setState({saveStatus:"✓ 저장 완료"}); setTimeout(()=>setState({saveStatus:""}),1200); }
+function saveData(){ 
+  autosave(); 
+  setState({saveStatus:"💾 데이터가 저장되었습니다"}); 
+  setTimeout(()=>setState({saveStatus:""}),2000); 
+}
 function downloadBackup(){
   const data = { players: state.players, matches: state.matches, formation: state.formation, quarters: state.quarters, currentQuarter: state.currentQuarter, exportedAt: new Date().toISOString(), version:"1.1" };
   const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = `hwarang-backup-${new Date().toISOString().slice(0,10)}.json`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-  setState({saveStatus:"✓ 백업 다운로드됨"}); setTimeout(()=>setState({saveStatus:""}),1200);
+  setState({saveStatus:"📥 백업 파일이 다운로드되었습니다"}); 
+  setTimeout(()=>setState({saveStatus:""}),2000);
 }
 
 /* ================== IMPORT FILE (선택형) ================== */
@@ -191,8 +239,8 @@ function importMembersFile(ev){
         else merged.push({ id: Date.now()+Math.random(), name:n, position:"MF", goals:0, assists:0, attendance:0, isPresent:false });
       });
       byName.forEach(v=>merged.push(v));
-      setState({ players: merged, saveStatus:"✓ JSON 반영됨" });
-      setTimeout(()=>setState({saveStatus:""}),1200);
+      setState({ players: merged, saveStatus:"📄 JSON 파일이 반영되었습니다" });
+      setTimeout(()=>setState({saveStatus:""}),2000);
     }catch(err){ alert("JSON 파싱 실패: "+err.message); }
     finally{ ev.target.value=""; }
   };
@@ -239,19 +287,37 @@ function saveCurrentQuarter(){
   const copy = deepCopyFormation(state.formation);
   const idx = state.currentQuarter - 1;
   const quarters = state.quarters.slice(); quarters[idx] = copy;
-  setState({ quarters, saveStatus:`✓ ${state.currentQuarter}쿼터 저장` });
-  setTimeout(()=>setState({saveStatus:""}),1000);
+  setState({ quarters, saveStatus:`💾 ${state.currentQuarter}쿼터가 저장되었습니다` });
+  setTimeout(()=>setState({saveStatus:""}),2000);
 }
 function loadQuarter(n){
   const q = state.quarters[n-1]; if(!q) return;
-  setState({ formation: deepCopyFormation(q), currentQuarter:n, saveStatus:`✓ ${n}쿼터 불러옴` });
-  setTimeout(()=>setState({saveStatus:""}),800);
+  setState({ formation: deepCopyFormation(q), currentQuarter:n, saveStatus:`📋 ${n}쿼터를 불러왔습니다` });
+  setTimeout(()=>setState({saveStatus:""}),1500);
 }
 function clearQuarter(n){
   const quarters = state.quarters.slice(); quarters[n-1] = null;
-  setState({ quarters, saveStatus:`✓ ${n}쿼터 삭제` });
-  setTimeout(()=>setState({saveStatus:""}),800);
+  setState({ quarters, saveStatus:`🗑️ ${n}쿼터가 삭제되었습니다` });
+  setTimeout(()=>setState({saveStatus:""}),1500);
 }
+
+// 포메이션 초기화 함수 수정
+function clearFormation(){
+  const emptyFormation = {
+    gk: [null],
+    def: [null,null,null,null],
+    dmf: [null,null],
+    cmf: [null,null,null],
+    amf: [null,null],
+    fw:  [null]
+  };
+  setState({ 
+    formation: emptyFormation, 
+    saveStatus:"🧹 포메이션이 초기화되었습니다" 
+  });
+  setTimeout(()=>setState({saveStatus:""}),1500);
+}
+
 function quartersPlayedCount(playerId){
   return state.quarters.reduce((acc,q)=>{
     if(!q) return acc;
@@ -279,7 +345,7 @@ function handleDrop(ev, position, slotIndex){
 
   const count = fieldCount(state.formation);
   const already = Object.values(state.formation).flat().some(p=>p && p.id===dragged.id);
-  if(!already && count>=11){ toast("⚠️ 필드 11명 제한"); return; }
+  if(!already && count>=11){ toast("⚠️ 필드에는 최대 11명만 배치 가능합니다"); return; }
   if(state.formation[position][slotIndex] !== null) return;
 
   const formation = {...state.formation};
@@ -288,6 +354,16 @@ function handleDrop(ev, position, slotIndex){
   formation[position][slotIndex] = dragged;
   setState({ formation });
   state.draggedPlayer=null;
+}
+
+// 개선된 제거 기능 - 이름 클릭으로 바로 제거
+function removePlayerFromSlot(pos, idx, e){
+  if(e){ e.stopPropagation(); e.preventDefault(); }
+  const formation = {...state.formation}; 
+  formation[pos] = [...formation[pos]]; 
+  formation[pos][idx]=null; 
+  setState({ formation, saveStatus:"✅ 선수가 제거되었습니다" });
+  setTimeout(()=>setState({saveStatus:""}),1000);
 }
 
 // Tap bottom sheet
@@ -300,7 +376,7 @@ function assignToSlot(playerId){
   const formation = {...state.formation};
   const count = fieldCount(formation);
   const already = Object.values(formation).flat().some(p=>p && p.id===playerId);
-  if(!already && count>=11){ toast("⚠️ 필드 11명 제한"); return; }
+  if(!already && count>=11){ toast("⚠️ 필드에는 최대 11명만 배치 가능합니다"); return; }
 
   const player = state.players.find(p=>p.id===playerId);
   Object.keys(formation).forEach(k=>{ formation[k] = formation[k].map(x => x && x.id===playerId ? null : x); });
@@ -333,7 +409,7 @@ function finishSwap(targetPlayerId){
 /* 길게 누르면 제거 (모바일) */
 let longPressTimer=null;
 function onChipTouchStart(pos, idx, e){
-  longPressTimer = setTimeout(()=>{ unassignSlot(pos, idx); }, 500);
+  longPressTimer = setTimeout(()=>{ removePlayerFromSlot(pos, idx); }, 500);
 }
 function onChipTouchEnd(){ clearTimeout(longPressTimer); }
 
@@ -384,11 +460,11 @@ function createDashboard(){
           <p class="text-sm sm:text-lg opacity-90">축구는 나의 삶이다</p>
         </div>
         <div class="flex flex-col sm:flex-row gap-2">
-          <button onclick="saveData()" class="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg flex items-center justify-center text-sm">${icons.save}<span class="ml-1">저장</span></button>
-          <button onclick="downloadBackup()" class="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg flex items-center justify-center text-sm">${icons.download}<span class="ml-1">백업</span></button>
+          <button onclick="saveData()" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg flex items-center justify-center text-sm transition-all hover:scale-105">${icons.save}<span class="ml-2">저장</span></button>
+          <button onclick="downloadBackup()" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg flex items-center justify-center text-sm transition-all hover:scale-105">${icons.download}<span class="ml-2">백업</span></button>
         </div>
       </div>
-      ${state.saveStatus?`<div class="mt-3 text-sm opacity-90 bg-white/10 px-3 py-2 rounded-lg">${state.saveStatus}</div>`:''}
+      ${state.saveStatus?`<div class="mt-3 text-sm opacity-95 bg-white/15 px-4 py-3 rounded-lg font-medium border border-white/20">${state.saveStatus}</div>`:''}
     </div>
 
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -399,26 +475,26 @@ function createDashboard(){
     </div>
 
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.target}<span class="ml-1">Top 득점자</span></h3>
+      <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.target}<span class="ml-2">Top 득점자</span></h3>
       ${top.length ? top.map((p,i)=>`
-        <div class="flex items-center justify-between py-1">
+        <div class="flex items-center justify-between py-2">
           <div class="flex items-center">
-            <span class="w-5 h-5 sm:w-6 sm:h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs sm:text-sm font-semibold mr-2 sm:mr-3">${i+1}</span>
-            <span class="text-sm sm:text-base">${p.name}</span>
-            <span class="ml-1 sm:ml-2 text-xs text-gray-500">(${p.position})</span>
+            <span class="w-6 h-6 sm:w-7 sm:h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold mr-3">${i+1}</span>
+            <span class="text-sm sm:text-base font-medium">${p.name}</span>
+            <span class="ml-2 text-xs text-gray-500">(${p.position})</span>
           </div>
-          <span class="text-sm sm:text-base font-semibold">${p.goals}골</span>
-        </div>`).join('') : '<div class="text-gray-500 text-sm text-center py-4">득점 기록이 없습니다</div>'}
+          <span class="text-sm sm:text-base font-bold text-blue-600">${p.goals}골</span>
+        </div>`).join('') : '<div class="text-gray-500 text-sm text-center py-6">득점 기록이 없습니다</div>'}
     </div>
   </div>`;
 }
 function statCard(label,value,icon,color){
   return `
-  <div class="bg-white p-3 sm:p-4 rounded-lg shadow-md border-l-4 border-gray-100">
+  <div class="bg-white p-3 sm:p-4 rounded-lg shadow-md border-l-4 border-blue-400 hover:shadow-lg transition-shadow">
     <div class="flex items-center justify-between">
       <div>
-        <p class="text-gray-600 text-xs sm:text-sm">${label}</p>
-        <p class="text-lg sm:text-2xl font-bold text-gray-800">${value}</p>
+        <p class="text-gray-600 text-xs sm:text-sm font-medium">${label}</p>
+        <p class="text-lg sm:text-2xl font-bold text-gray-800 mt-1">${value}</p>
       </div>
       <div class="icon-lg ${color} flex-shrink-0">${icons[icon]}</div>
     </div>
@@ -484,42 +560,45 @@ function createFormation(){
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div class="flex items-center gap-2">
-          <span class="text-sm text-gray-600">현재 쿼터</span>
+          <span class="text-sm text-gray-600 font-medium">현재 쿼터</span>
           ${[1,2,3,4].map(n=>`
             <button onclick="setCurrentQuarter(${n})"
-              class="px-3 py-1 rounded text-sm ${state.currentQuarter===n?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200'}">${n}</button>`).join('')}
+              class="px-3 py-2 rounded-lg text-sm font-medium transition-all ${state.currentQuarter===n?'bg-blue-600 text-white shadow-md':'bg-gray-100 hover:bg-gray-200'}">${n}</button>`).join('')}
         </div>
         <div class="flex items-center gap-2">
-          <button onclick="saveCurrentQuarter()" class="bg-blue-600 text-white px-3 py-2 rounded text-sm flex items-center">${icons.save}<span class="ml-1">현재 쿼터 저장</span></button>
+          <button onclick="saveCurrentQuarter()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm flex items-center hover:bg-blue-700 transition-all">${icons.save}<span class="ml-2">현재 쿼터 저장</span></button>
         </div>
       </div>
-      <div class="mt-2 text-xs text-gray-600">출석: ${present.length}명 | 배치: ${total}/11명</div>
+      <div class="mt-3 flex items-center justify-between text-sm">
+        <span class="text-gray-600">📊 출석: <span class="font-semibold text-blue-600">${present.length}명</span> | 배치: <span class="font-semibold ${total===11?'text-green-600':total>11?'text-red-600':'text-orange-600'}">${total}/11명</span></span>
+        ${state.saveStatus?`<span class="text-green-600 font-medium">${state.saveStatus}</span>`:''}
+      </div>
     </div>
 
     <!-- 출석 명단(드래그 원천) -->
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <h3 class="text-base sm:text-lg font-semibold mb-3">출석 인원</h3>
+      <h3 class="text-base sm:text-lg font-semibold mb-3 flex items-center">${icons.users}<span class="ml-2">출석 인원</span></h3>
       <div class="flex flex-wrap gap-2">
         ${present.map(p=>{
           const placed = Object.values(state.formation).flat().some(x=>x && x.id===p.id);
           const played = quartersPlayedCount(p.id);
           return `
-          <div class="player-chip no-select ${placed?'bg-gray-200 text-gray-500':'bg-blue-100 text-blue-800'} px-2 sm:px-3 py-1 sm:py-2 rounded-full text-xs sm:text-sm font-medium ${placed?'cursor-not-allowed':'cursor-move hover:bg-blue-200'}"
+          <div class="player-chip no-select ${placed?'bg-gray-200 text-gray-600':'bg-blue-100 text-blue-800 hover:bg-blue-200'} px-3 py-2 rounded-full text-sm font-medium ${placed?'cursor-not-allowed':'cursor-move'} transition-all"
                ${!placed?'draggable="true" ondragstart="handleDragStart(event, '+p.id+')" ondragend="handleDragEnd(event)"':''}
                style="touch-action:none;">
             <span class="mr-1">${p.name}</span>
-            <span class="text-[11px] opacity-75">(${p.position})</span>
-            <span class="ml-1 text-[10px] opacity-75">(${played}/4)</span>
-            ${placed?'<span class="ml-1 text-[10px]">✓</span>':''}
+            <span class="text-xs opacity-75">(${p.position})</span>
+            <span class="ml-1 text-xs opacity-75">(${played}/4)</span>
+            ${placed?'<span class="ml-1 text-xs">✓</span>':''}
           </div>`;
         }).join('')}
       </div>
-      ${present.length===0?'<p class="text-gray-500 text-xs sm:text-sm mt-2">선수 관리 탭에서 출석 체크 후 배치하세요.</p>':''}
+      ${present.length===0?'<p class="text-gray-500 text-sm mt-2 text-center py-4 bg-gray-50 rounded-lg">💡 선수 관리 탭에서 출석 체크 후 여기서 배치하세요</p>':''}
     </div>
 
     <!-- 포메이션 -->
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4">포메이션</h3>
+      <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.target}<span class="ml-2">포메이션</span></h3>
       <div class="pitch">
         <div class="half-line"></div><div class="center-circle"></div><div class="center-dot"></div>
         <div class="box top"></div><div class="box bottom"></div>
@@ -529,26 +608,27 @@ function createFormation(){
         </div>
       </div>
 
-      <div class="mt-3 sm:mt-4 text-center">
-        <span class="text-xs sm:text-sm font-medium ${total===11?'text-green-600': total>11?'text-red-600':'text-gray-700'}">
-          필드 선수: ${total}/11명 ${total>11?' (인원 초과!)':''} ${total===11?' ✓ 완료':''}
+      <div class="mt-4 text-center">
+        <span class="text-sm font-medium ${total===11?'text-green-600': total>11?'text-red-600':'text-gray-700'}">
+          🏟️ 필드 선수: ${total}/11명 ${total>11?' ⚠️ 인원 초과!':''} ${total===11?' ✅ 완료':''}
         </span>
       </div>
 
-      <div class="mt-3 sm:mt-4 text-center">
-        <button onclick="clearFormation()" class="bg-gray-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-gray-700 text-xs sm:text-sm">포메이션 초기화</button>
+      <div class="mt-4 text-center">
+        <button onclick="clearFormation()" class="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 text-sm transition-all hover:scale-105">${icons.trash}<span class="ml-2">포메이션 초기화</span></button>
       </div>
     </div>
 
     <!-- 쿼터 미리보기 (세로로 1,2,3,4) -->
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <h3 class="text-base sm:text-lg font-semibold mb-3">쿼터 미리보기</h3>
+      <h3 class="text-base sm:text-lg font-semibold mb-4 flex items-center">${icons.calendar}<span class="ml-2">쿼터 미리보기</span></h3>
       <div class="space-y-4">
         ${[1,2,3,4].map(n => createQuarterPreview(n)).join('')}
       </div>
     </div>
   </div>`;
 }
+
 function createPositionRow(position){
   const slots = state.formation[position];
   const labels = positionLabels[position] || [];
@@ -560,7 +640,7 @@ function createPositionRow(position){
               : 'bg-red-500';
 
   return `
-  <div class="row-grid cols-${slots.length} gap-2 sm:gap-4 px-4">
+  <div class="row-grid cols-${slots.length} px-4">
     ${slots.map((player,idx)=>`
       <div class="cell drop-slot"
            data-position="${position}" data-slot-index="${idx}"
@@ -570,20 +650,19 @@ function createPositionRow(position){
 
         ${player?`
           <div class="relative">
-            <div class="w-12 h-12 sm:w-16 sm:h-16 ${color} rounded-full flex items-center justify-center text-white text-[11px] sm:text-xs font-bold shadow-md cursor-pointer no-select"
-                 title="탭하면 교체/제거"
+            <div class="w-14 h-14 sm:w-16 sm:h-16 ${color} rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-bold shadow-lg player-chip-field no-select"
+                 title="클릭하여 제거 또는 교체"
+                 onclick="removePlayerFromSlot('${position}', ${idx}, event)"
                  ontouchstart="onChipTouchStart('${position}', ${idx}, event)" ontouchend="onChipTouchEnd()">
               <span class="text-center leading-tight px-1">${player.name}</span>
             </div>
-            <button class="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-xs flex items-center justify-center"
-                    onclick="unassignSlot('${position}', ${idx}, event)">×</button>
           </div>
         ` : `
-          <div class="w-12 h-12 sm:w-16 sm:h-16 border-2 border-dashed border-white/60 rounded-full flex items-center justify-center text-white/80 text-[11px] sm:text-xs">
-            <span class="text-center">빈칸</span>
+          <div class="w-14 h-14 sm:w-16 sm:h-16 empty-slot rounded-full flex items-center justify-center text-white/60 text-xs cursor-pointer">
+            <span class="text-center">+</span>
           </div>`}
 
-        <div class="text-white/90 text-[10px] sm:text-xs font-medium">${labels[idx]||''}</div>
+        <div class="text-white/90 text-xs font-medium mt-1">${labels[idx]||''}</div>
       </div>
     `).join('')}
   </div>`;
@@ -593,15 +672,20 @@ function createPositionRow(position){
 function createQuarterPreview(n){
   const q = state.quarters[n-1];
   const title = `${n}쿼터`;
+  const playerCount = q ? Object.values(q).flat().filter(Boolean).length : 0;
+  
   return `
-  <div class="border rounded-lg p-3">
-    <div class="flex items-center justify-between mb-2">
-      <div class="font-medium text-sm">${title} ${q?'':'(비어있음)'}</div>
+  <div class="border-2 rounded-lg p-4 ${q ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}">
+    <div class="flex items-center justify-between mb-3">
       <div class="flex items-center gap-2">
-        <button class="text-xs px-2 py-1 rounded ${q?'bg-blue-600 text-white':'bg-gray-100 text-gray-500 cursor-not-allowed'}"
-                ${q?`onclick="loadQuarter(${n})"`:'disabled'}>불러오기</button>
-        <button class="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 flex items-center"
-                onclick="clearQuarter(${n})">${icons.trash}<span class="ml-1">삭제</span></button>
+        <span class="font-semibold text-sm">${title}</span>
+        <span class="text-xs px-2 py-1 rounded-full ${q ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}">${q ? `${playerCount}/11명` : '비어있음'}</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="text-xs px-3 py-1 rounded-lg transition-all ${q?'bg-blue-600 text-white hover:bg-blue-700':'bg-gray-100 text-gray-500 cursor-not-allowed'}"
+                ${q?`onclick="loadQuarter(${n})"`:'disabled'}>${q?'불러오기':'비어있음'}</button>
+        <button class="text-xs px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center transition-all"
+                onclick="clearQuarter(${n})">${icons.trash}</button>
       </div>
     </div>
     <div class="mini-pitch relative">
@@ -610,6 +694,7 @@ function createQuarterPreview(n){
     </div>
   </div>`;
 }
+
 function miniRows(q){
   // y 위치: 위에서부터 fw, amf, cmf, dmf, def, gk 순으로 고정
   const positions = rowOrder;
@@ -642,27 +727,30 @@ function createBottomSheet(){
   <div class="fixed inset-0 z-50">
     <div class="absolute inset-0 bg-black/30" onclick="closePicker()"></div>
     <div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl p-4 pt-3">
-      <div class="flex items-center justify-between mb-2">
-        <div class="text-sm text-gray-600">슬롯: <b>${pos.toUpperCase()} ${idx+1}</b></div>
-        <button class="text-gray-500 text-sm" onclick="closePicker()">닫기</button>
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-sm text-gray-600 font-medium">슬롯: <span class="text-blue-600 font-bold">${pos.toUpperCase()} ${idx+1}</span></div>
+        <button class="text-gray-500 text-sm hover:text-gray-700" onclick="closePicker()">✕ 닫기</button>
       </div>
-      <div class="flex items-center gap-2 mb-3">
-        <input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="이름 검색" value="${state.ui.pickerSearch}"
+      <div class="flex items-center gap-2 mb-4">
+        <input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="이름 검색..." value="${state.ui.pickerSearch}"
                oninput="setState({ ui:{...state.ui, pickerSearch:this.value} })">
-        ${inSlot?`<button class="px-3 py-2 text-xs rounded bg-gray-100 hover:bg-gray-200" onclick="unassignSlot('${pos}', ${idx}, event)">제거</button>`:''}
-        ${inSlot?`<button class="px-3 py-2 text-xs rounded bg-blue-100 hover:bg-blue-200" onclick="startSwap('${pos}', ${idx})">${state.swapBuffer?'스왑취소':'스왑시작'}</button>`:''}
+        ${inSlot?`<button class="px-3 py-2 text-xs rounded-lg bg-red-100 hover:bg-red-200 text-red-700" onclick="unassignSlot('${pos}', ${idx}, event)">제거</button>`:''}
+        ${inSlot?`<button class="px-3 py-2 text-xs rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700" onclick="startSwap('${pos}', ${idx})">${state.swapBuffer?'스왑취소':'스왑시작'}</button>`:''}
       </div>
-      <div class="max-h-[50vh] overflow-auto grid grid-cols-2 gap-2">
+      <div class="max-h-[50vh] overflow-auto grid grid-cols-1 gap-2">
         ${candidates.map(p=>`
-          <button class="p-2 rounded border text-left hover:bg-blue-50"
+          <button class="p-3 rounded-lg border text-left hover:bg-blue-50 hover:border-blue-200 transition-all"
                   onclick="${state.swapBuffer ? `finishSwap(${p.id})` : `assignToSlot(${p.id})`}">
             <div class="flex items-center justify-between">
-              <span class="text-sm font-medium">${p.name}</span>
-              <span class="text-[10px] text-gray-500">${p.position} (${quartersPlayedCount(p.id)}/4)</span>
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-medium">${p.name}</span>
+                <span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">${p.position}</span>
+              </div>
+              <span class="text-xs text-gray-500">쿼터: ${quartersPlayedCount(p.id)}/4</span>
             </div>
           </button>
         `).join('')}
-        ${candidates.length===0?`<div class="col-span-2 text-center text-sm text-gray-500 py-6">후보가 없습니다</div>`:''}
+        ${candidates.length===0?`<div class="text-center text-sm text-gray-500 py-8 bg-gray-50 rounded-lg">😔 선택할 수 있는 선수가 없습니다</div>`:''}
       </div>
     </div>
   </div>`;
@@ -676,109 +764,74 @@ function createPlayers(){
   <div class="space-y-4 sm:space-y-6">
     <div class="bg-white p-4 rounded-lg shadow-md">
       <div class="flex flex-col sm:flex-row sm:items-center gap-3">
-        <label class="bg-gray-800 text-white px-3 py-2 rounded-lg cursor-pointer text-xs sm:text-sm flex items-center">
-          ${icons.upload}<span class="ml-1">JSON 불러오기</span>
+        <label class="bg-gray-800 text-white px-4 py-2 rounded-lg cursor-pointer text-sm flex items-center hover:bg-gray-700 transition-all">
+          ${icons.upload}<span class="ml-2">JSON 불러오기</span>
           <input id="membersFile" type="file" accept=".json" class="hidden" onchange="importMembersFile(event)">
         </label>
-        <button onclick="downloadBackup()" class="bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg text-xs sm:text-sm flex items-center">
-          ${icons.download}<span class="ml-1">데이터 백업</span>
+        <button onclick="downloadBackup()" class="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-lg text-sm flex items-center transition-all">
+          ${icons.download}<span class="ml-2">데이터 백업</span>
         </button>
         <div class="sm:ml-auto w-full sm:w-auto">
-          <input class="border rounded-lg px-3 py-2 w-full sm:w-64 text-sm" placeholder="선수 이름 검색" value="${state.playerSearch}" oninput="setState({playerSearch:this.value})">
+          <input class="border rounded-lg px-3 py-2 w-full sm:w-64 text-sm" placeholder="선수 이름 검색..." value="${state.playerSearch}" oninput="setState({playerSearch:this.value})">
         </div>
       </div>
     </div>
 
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 gap-2">
-        <h3 class="text-base sm:text-lg font-semibold">출석 체크</h3>
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
+        <h3 class="text-base sm:text-lg font-semibold flex items-center">${icons.users}<span class="ml-2">출석 체크</span></h3>
         <div class="flex items-center gap-4">
-          <div class="text-xs sm:text-sm text-gray-600">출석: ${state.players.filter(p=>p.isPresent).length}명</div>
-          <button onclick="clearAllAttendance()" class="text-red-500 hover:text-red-700 text-xs">전체 해제</button>
+          <div class="text-sm text-gray-600">📊 출석: <span class="font-semibold text-blue-600">${state.players.filter(p=>p.isPresent).length}명</span></div>
+          <button onclick="clearAllAttendance()" class="text-red-500 hover:text-red-700 text-sm font-medium">전체 해제</button>
         </div>
       </div>
 
-      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         ${list.map(p=>`
           <button onclick="toggleAttendance(${p.id})"
-                  class="p-2 sm:p-3 rounded-lg border text-left transition-colors ${p.isPresent?'bg-green-50 border-green-300 text-green-800':'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'}">
-            <div class="flex items-center justify-between">
-              <span class="font-medium text-xs sm:text-sm">${p.name}</span>
-              <span class="text-[11px] opacity-75">${p.position}</span>
+                  class="p-3 rounded-lg border-2 text-left transition-all hover:scale-105 ${p.isPresent?'bg-green-50 border-green-300 text-green-800 shadow-md':'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'}">
+            <div class="flex items-center justify-between mb-1">
+              <span class="font-medium text-sm">${p.name}</span>
+              <span class="text-xs px-2 py-1 rounded-full ${p.isPresent?'bg-green-100':'bg-gray-100'}">${p.position}</span>
             </div>
-            <div class="text-[11px] text-gray-500 mt-1">(쿼터: ${quartersPlayedCount(p.id)}/4)</div>
-            ${p.isPresent?'<div class="text-xs text-green-600 mt-1">✓ 출석</div>':''}
+            <div class="text-xs text-gray-500">쿼터: ${quartersPlayedCount(p.id)}/4</div>
+            ${p.isPresent?'<div class="text-xs text-green-600 mt-1 font-medium">✅ 출석</div>':''}
           </button>`).join('')}
       </div>
     </div>
 
     <div class="bg-white rounded-lg shadow-md">
-      <h3 class="text-base sm:text-lg font-semibold p-4 sm:p-6 border-b">선수 기록</h3>
+      <h3 class="text-base sm:text-lg font-semibold p-4 sm:p-6 border-b flex items-center">${icons.barChart}<span class="ml-2">선수 기록</span></h3>
       <div class="overflow-x-auto">
         <table class="w-full">
           <thead class="bg-gray-50">
             <tr>
-              <th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이름</th>
-              <th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">포지션</th>
-              <th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">쿼터</th>
+              <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이름</th>
+              <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">포지션</th>
+              <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">쿼터 참여</th>
+              <th class="px-4 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">출석 상태</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-200">
             ${state.players.map(p=>`
               <tr class="hover:bg-gray-50">
-                <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-900">${p.name}</td>
-                <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                <td class="px-4 sm:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${p.name}</td>
+                <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
                   <span class="px-2 py-1 text-xs rounded-full ${
                     p.position==="FW"?"bg-red-100 text-red-800":
                     p.position==="MF"?"bg-blue-100 text-blue-800":
                     p.position==="DF"?"bg-green-100 text-green-800":"bg-purple-100 text-purple-800"}">${p.position}</span>
                 </td>
-                <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm">${quartersPlayedCount(p.id)}/4</td>
+                <td class="px-4 sm:px-6 py-4 whitespace-nowrap text-sm">
+                  <span class="font-medium">${quartersPlayedCount(p.id)}/4</span>
+                  <span class="text-xs text-gray-500 ml-1">쿼터</span>
+                </td>
+                <td class="px-4 sm:px-6 py-4 whitespace-nowrap">
+                  <span class="px-2 py-1 text-xs rounded-full ${p.isPresent?'bg-green-100 text-green-800':'bg-gray-100 text-gray-600'}">${p.isPresent?'출석':'미출석'}</span>
+                </td>
               </tr>`).join('')}
           </tbody>
         </table>
-      </div>
-    </div>
-  </div>`;
-}
-
-/* ================== BOTTOM SHEET (선수 선택) ================== */
-function createBottomSheet(){
-  if(!state.ui.pickerOpen) return '';
-  const pos = state.ui.pickerPos, idx = state.ui.pickerSlot;
-  const inSlot = state.formation[pos][idx];
-  const assignedIds = new Set(Object.values(state.formation).flat().filter(Boolean).map(p=>p.id));
-  const q = state.ui.pickerSearch.trim().toLowerCase();
-  const candidates = state.players
-    .filter(p=>p.isPresent)
-    .filter(p=> !assignedIds.has(p.id) || (inSlot && p.id===inSlot.id))
-    .filter(p=> p.name.toLowerCase().includes(q));
-
-  return `
-  <div class="fixed inset-0 z-50">
-    <div class="absolute inset-0 bg-black/30" onclick="closePicker()"></div>
-    <div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl p-4 pt-3">
-      <div class="flex items-center justify-between mb-2">
-        <div class="text-sm text-gray-600">슬롯: <b>${pos.toUpperCase()} ${idx+1}</b></div>
-        <button class="text-gray-500 text-sm" onclick="closePicker()">닫기</button>
-      </div>
-      <div class="flex items-center gap-2 mb-3">
-        <input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="이름 검색" value="${state.ui.pickerSearch}"
-               oninput="setState({ ui:{...state.ui, pickerSearch:this.value} })">
-        ${inSlot?`<button class="px-3 py-2 text-xs rounded bg-gray-100 hover:bg-gray-200" onclick="unassignSlot('${pos}', ${idx}, event)">제거</button>`:''}
-        ${inSlot?`<button class="px-3 py-2 text-xs rounded bg-blue-100 hover:bg-blue-200" onclick="startSwap('${pos}', ${idx})">${state.swapBuffer?'스왑취소':'스왑시작'}</button>`:''}
-      </div>
-      <div class="max-h-[50vh] overflow-auto grid grid-cols-2 gap-2">
-        ${candidates.map(p=>`
-          <button class="p-2 rounded border text-left hover:bg-blue-50"
-                  onclick="${state.swapBuffer ? `finishSwap(${p.id})` : `assignToSlot(${p.id})`}">
-            <div class="flex items-center justify-between">
-              <span class="text-sm font-medium">${p.name}</span>
-              <span class="text-[10px] text-gray-500">${p.position} (${quartersPlayedCount(p.id)}/4)</span>
-            </div>
-          </button>
-        `).join('')}
-        ${candidates.length===0?`<div class="col-span-2 text-center text-sm text-gray-500 py-6">후보가 없습니다</div>`:''}
       </div>
     </div>
   </div>`;
@@ -789,7 +842,7 @@ let toastTimer=null;
 function toast(msg){
   setState({saveStatus:msg});
   if(toastTimer) clearTimeout(toastTimer);
-  toastTimer=setTimeout(()=>setState({saveStatus:""}), 1400);
+  toastTimer=setTimeout(()=>setState({saveStatus:""}), 2000);
 }
 
 /* ================== START ================== */
