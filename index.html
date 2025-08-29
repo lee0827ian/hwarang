@@ -98,6 +98,12 @@ const icons = {
 function render(){ document.getElementById('root').innerHTML = createApp(); }
 function setState(p){ state = {...state, ...p}; render(); autosave(); }
 
+/* -------------------- 탭 전환 -------------------- */
+  function setActiveTab(id){
+    setState({ activeTab: id });
+  }
+
+
 /* -------------------- 로컬 저장 -------------------- */
 function autosave(){
   const data = {players:state.players, matches:state.matches, formation:state.formation, savedAt:new Date().toISOString()};
@@ -576,3 +582,4 @@ document.addEventListener('DOMContentLoaded', ()=>{ loadData().then(render); });
 </script>
 </body>
 </html>
+
