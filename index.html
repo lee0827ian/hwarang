@@ -29,6 +29,26 @@
     /* Mobile nav scroll */
     .nav-scroll{ scrollbar-width:none; -ms-overflow-style:none }
     .nav-scroll::-webkit-scrollbar{ display:none }
+
+    /* 균형 그리드 (슬롯 수만큼 동일 분할) */
+    .row-grid { display:grid; align-items:center; }
+    .row-grid.cols-1{ grid-template-columns: repeat(1, 1fr); }
+    .row-grid.cols-2{ grid-template-columns: repeat(2, 1fr); }
+    .row-grid.cols-3{ grid-template-columns: repeat(3, 1fr); }
+    .row-grid.cols-4{ grid-template-columns: repeat(4, 1fr); }
+    .row-grid.cols-5{ grid-template-columns: repeat(5, 1fr); }
+    .row-grid .cell{ display:flex; flex-direction:column; align-items:center; gap:4px; }
+
+    /* 미니 프리뷰 피치 */
+    .mini-pitch{ position:relative; height:120px; background:linear-gradient(#bfe3bf,#9bd49b); border-radius:10px; overflow:hidden; box-shadow:inset 0 0 0 2px rgba(255,255,255,.5) }
+    .mini-pitch .half-line{ position:absolute; top:50%; left:0; right:0; height:2px; background:rgba(255,255,255,.7); transform:translateY(-50%) }
+    .mini-pitch .box{ position:absolute; left:50%; width:120px; height:52px; border:2px solid rgba(255,255,255,.7); transform:translateX(-50%); background:rgba(255,255,255,.06) }
+    .mini-pitch .box.top{ top:6px } .mini-pitch .box.bottom{ bottom:6px }
+    .mini-row{ position:absolute; left:8px; right:8px; display:grid; place-items:center; }
+    .mini-badge{ font-size:10px; line-height:1; color:#fff; background:rgba(59,130,246,.9); padding:3px 6px; border-radius:999px; white-space:nowrap; max-width:90px; overflow:hidden; text-overflow:ellipsis; }
+
+    /* 길게 누르기 힌트 감안한 선택 방지 */
+    .no-select{ user-select:none; -webkit-user-select:none; }
   </style>
 </head>
 <body>
@@ -46,8 +66,12 @@ let state = {
     dmf: [null,null],           // 2
     cmf: [null,null,null],      // 3
     amf: [null,null],           // 2
-    fw:  [null]                 // 1  -> 총 13칸 중 11명만 허용
+    fw:  [null]                 // 1  (총 13칸 중 실제는 11명 제한)
   },
+  // 쿼터 저장소 (1~4). 각 항목은 formation deep copy
+  quarters: [null, null, null, null],
+  currentQuarter: 1,
+
   newMatch: { opponent:"", location:"", date:"", result:"", goals:0, conceded:0 },
   newPlayer: { name:"", position:"FW" },
   draggedPlayer: null,
@@ -64,6 +88,7 @@ const positionLabels = {
   amf: ['LW','RW'],
   fw:  ['ST']
 };
+const rowOrder = ['fw','amf','cmf','dmf','def','gk']; // 위에서 아래로
 const icons = {
   plus:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>',
   users:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2m14 0h3v-2a7 7 0 00-7-7M9 7a4 4 0 118 0 4 4 0 01-8 0z"/></svg>',
@@ -74,7 +99,7 @@ const icons = {
   save:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h3"/></svg>',
   upload:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M8 12l4-4 4 4M12 8v8"/></svg>',
   download:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M8 12l4 4 4-4M12 16V4"/></svg>',
-  refresh:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>'
+  trash:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5-4h4a2 2 0 012 2v2H8V5a2 2 0 012-2z"/></svg>'
 };
 
 /* ================== RENDER/STATE ================== */
@@ -91,6 +116,7 @@ function sanitizeName(raw){
   return s.trim();
 }
 function safeJSON(s, fallback){ try{ return JSON.parse(s); }catch{ return fallback; } }
+function deepCopyFormation(f){ return JSON.parse(JSON.stringify(f)); }
 
 /* ================== STORAGE / LOAD ================== */
 async function loadData(){
@@ -101,6 +127,8 @@ async function loadData(){
       players: savedData.players || [],
       matches: savedData.matches || [],
       formation: savedData.formation || state.formation,
+      quarters: savedData.quarters || [null,null,null,null],
+      currentQuarter: savedData.currentQuarter || 1,
       saveStatus:"✓ 저장된 데이터 불러옴"
     });
     setTimeout(()=>setState({saveStatus:""}),1200);
@@ -129,12 +157,16 @@ async function loadData(){
   render();
 }
 function autosave(){
-  const data = { players: state.players, matches: state.matches, formation: state.formation, savedAt: new Date().toISOString() };
+  const data = { 
+    players: state.players, matches: state.matches, formation: state.formation,
+    quarters: state.quarters, currentQuarter: state.currentQuarter,
+    savedAt: new Date().toISOString()
+  };
   localStorage.setItem('soccerTeamData', JSON.stringify(data));
 }
 function saveData(){ autosave(); setState({saveStatus:"✓ 저장 완료"}); setTimeout(()=>setState({saveStatus:""}),1200); }
 function downloadBackup(){
-  const data = { players: state.players, matches: state.matches, formation: state.formation, exportedAt: new Date().toISOString(), version:"1.0" };
+  const data = { players: state.players, matches: state.matches, formation: state.formation, quarters: state.quarters, currentQuarter: state.currentQuarter, exportedAt: new Date().toISOString(), version:"1.1" };
   const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = `hwarang-backup-${new Date().toISOString().slice(0,10)}.json`;
@@ -175,9 +207,7 @@ function addPlayer(){
     newPlayer: { name:"", position:"FW" }
   });
 }
-function toggleAttendance(id){
-  setState({ players: state.players.map(p=> p.id===id ? {...p, isPresent:!p.isPresent} : p ) });
-}
+function toggleAttendance(id){ setState({ players: state.players.map(p=> p.id===id ? {...p, isPresent:!p.isPresent} : p ) }); }
 function clearAllAttendance(){ setState({ players: state.players.map(p=>({...p, isPresent:false})) }); }
 function setActiveTab(tab){ setState({activeTab:tab}); }
 function updateNewPlayer(field, v){ setState({ newPlayer: {...state.newPlayer, [field]:v} }); }
@@ -203,7 +233,36 @@ function teamStats(){
   };
 }
 
+/* ================== QUARTERS (1~4) ================== */
+function setCurrentQuarter(n){ setState({ currentQuarter:n }); }
+function saveCurrentQuarter(){
+  const copy = deepCopyFormation(state.formation);
+  const idx = state.currentQuarter - 1;
+  const quarters = state.quarters.slice(); quarters[idx] = copy;
+  setState({ quarters, saveStatus:`✓ ${state.currentQuarter}쿼터 저장` });
+  setTimeout(()=>setState({saveStatus:""}),1000);
+}
+function loadQuarter(n){
+  const q = state.quarters[n-1]; if(!q) return;
+  setState({ formation: deepCopyFormation(q), currentQuarter:n, saveStatus:`✓ ${n}쿼터 불러옴` });
+  setTimeout(()=>setState({saveStatus:""}),800);
+}
+function clearQuarter(n){
+  const quarters = state.quarters.slice(); quarters[n-1] = null;
+  setState({ quarters, saveStatus:`✓ ${n}쿼터 삭제` });
+  setTimeout(()=>setState({saveStatus:""}),800);
+}
+function quartersPlayedCount(playerId){
+  return state.quarters.reduce((acc,q)=>{
+    if(!q) return acc;
+    const found = Object.values(q).flat().some(p=>p && p.id===playerId);
+    return acc + (found?1:0);
+  },0);
+}
+
 /* ================== DnD + Tap-to-Assign ================== */
+function fieldCount(f){ return Object.values(f).flat().filter(Boolean).length; }
+
 // DnD
 function handleDragStart(ev, playerId){
   const player = state.players.find(p=>p.id===playerId);
@@ -218,23 +277,19 @@ function handleDrop(ev, position, slotIndex){
   ev.preventDefault(); ev.currentTarget.classList.remove("drag-over");
   const dragged = state.draggedPlayer; if(!dragged) return;
 
-  // 11명 제한
-  const count = Object.values(state.formation).flat().filter(Boolean).length;
+  const count = fieldCount(state.formation);
   const already = Object.values(state.formation).flat().some(p=>p && p.id===dragged.id);
   if(!already && count>=11){ toast("⚠️ 필드 11명 제한"); return; }
-
   if(state.formation[position][slotIndex] !== null) return;
-  const formation = {...state.formation};
 
-  // 기존 위치 제거
-  Object.keys(formation).forEach(k=>{
-    formation[k] = formation[k].map(x => x && x.id===dragged.id ? null : x);
-  });
+  const formation = {...state.formation};
+  Object.keys(formation).forEach(k=>{ formation[k] = formation[k].map(x => x && x.id===dragged.id ? null : x); });
   formation[position] = [...formation[position]];
   formation[position][slotIndex] = dragged;
   setState({ formation });
   state.draggedPlayer=null;
 }
+
 // Tap bottom sheet
 function openPicker(position, slotIndex){
   setState({ ui:{ pickerOpen:true, pickerPos:position, pickerSlot:slotIndex, pickerSearch:"" } });
@@ -243,7 +298,7 @@ function closePicker(){ setState({ ui:{...state.ui, pickerOpen:false, pickerPos:
 function assignToSlot(playerId){
   const {pickerPos:pos, pickerSlot:idx} = state.ui; if(pos==null) return;
   const formation = {...state.formation};
-  const count = Object.values(formation).flat().filter(Boolean).length;
+  const count = fieldCount(formation);
   const already = Object.values(formation).flat().some(p=>p && p.id===playerId);
   if(!already && count>=11){ toast("⚠️ 필드 11명 제한"); return; }
 
@@ -252,7 +307,8 @@ function assignToSlot(playerId){
   formation[pos] = [...formation[pos]]; formation[pos][idx] = player;
   setState({ formation }); closePicker();
 }
-function unassignSlot(pos, idx){
+function unassignSlot(pos, idx, e){
+  if(e){ e.stopPropagation(); e.preventDefault(); }
   const formation = {...state.formation}; formation[pos] = [...formation[pos]]; formation[pos][idx]=null; setState({ formation });
 }
 function startSwap(pos, idx){ if(state.swapBuffer){ setState({swapBuffer:null}); return; } setState({ swapBuffer:{position:pos, slotIndex:idx} }); }
@@ -273,6 +329,13 @@ function finishSwap(targetPlayerId){
   }
   setState({ formation, swapBuffer:null }); closePicker();
 }
+
+/* 길게 누르면 제거 (모바일) */
+let longPressTimer=null;
+function onChipTouchStart(pos, idx, e){
+  longPressTimer = setTimeout(()=>{ unassignSlot(pos, idx); }, 500);
+}
+function onChipTouchEnd(){ clearTimeout(longPressTimer); }
 
 /* ================== UI ================== */
 function createApp(){
@@ -417,28 +480,44 @@ function createFormation(){
 
   return `
   <div class="space-y-4 sm:space-y-6">
+    <!-- 상단: 쿼터 컨트롤 -->
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 sm:mb-4 gap-2">
-        <h3 class="text-base sm:text-lg font-semibold">출석 인원</h3>
-        <div class="text-xs sm:text-sm text-gray-600">출석: ${present.length}명 | 배치: ${total}/11명</div>
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-gray-600">현재 쿼터</span>
+          ${[1,2,3,4].map(n=>`
+            <button onclick="setCurrentQuarter(${n})"
+              class="px-3 py-1 rounded text-sm ${state.currentQuarter===n?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200'}">${n}</button>`).join('')}
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="saveCurrentQuarter()" class="bg-blue-600 text-white px-3 py-2 rounded text-sm flex items-center">${icons.save}<span class="ml-1">현재 쿼터 저장</span></button>
+        </div>
       </div>
+      <div class="mt-2 text-xs text-gray-600">출석: ${present.length}명 | 배치: ${total}/11명</div>
+    </div>
 
-      <div class="flex flex-wrap gap-2 mb-2">
+    <!-- 출석 명단(드래그 원천) -->
+    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+      <h3 class="text-base sm:text-lg font-semibold mb-3">출석 인원</h3>
+      <div class="flex flex-wrap gap-2">
         ${present.map(p=>{
           const placed = Object.values(state.formation).flat().some(x=>x && x.id===p.id);
+          const played = quartersPlayedCount(p.id);
           return `
-          <div class="player-chip ${placed?'bg-gray-200 text-gray-500':'bg-blue-100 text-blue-800'} px-2 sm:px-3 py-1 sm:py-2 rounded-full text-xs sm:text-sm font-medium ${placed?'cursor-not-allowed':'cursor-move hover:bg-blue-200'} transition-colors flex items-center select-none"
+          <div class="player-chip no-select ${placed?'bg-gray-200 text-gray-500':'bg-blue-100 text-blue-800'} px-2 sm:px-3 py-1 sm:py-2 rounded-full text-xs sm:text-sm font-medium ${placed?'cursor-not-allowed':'cursor-move hover:bg-blue-200'}"
                ${!placed?'draggable="true" ondragstart="handleDragStart(event, '+p.id+')" ondragend="handleDragEnd(event)"':''}
                style="touch-action:none;">
             <span class="mr-1">${p.name}</span>
             <span class="text-[11px] opacity-75">(${p.position})</span>
+            <span class="ml-1 text-[10px] opacity-75">(${played}/4)</span>
             ${placed?'<span class="ml-1 text-[10px]">✓</span>':''}
           </div>`;
         }).join('')}
       </div>
-      ${present.length===0?'<p class="text-gray-500 text-xs sm:text-sm">선수 관리 탭에서 출석 체크 후 배치하세요.</p>':''}
+      ${present.length===0?'<p class="text-gray-500 text-xs sm:text-sm mt-2">선수 관리 탭에서 출석 체크 후 배치하세요.</p>':''}
     </div>
 
+    <!-- 포메이션 -->
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
       <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4">포메이션</h3>
       <div class="pitch">
@@ -446,12 +525,7 @@ function createFormation(){
         <div class="box top"></div><div class="box bottom"></div>
 
         <div class="relative h-full flex flex-col justify-between py-8 sm:py-16">
-          ${createPositionRow('fw','공격수','bg-red-500',state.formation.fw)}
-          ${createPositionRow('amf','공격형 MF','bg-orange-500',state.formation.amf)}
-          ${createPositionRow('cmf','중앙 MF','bg-blue-500',state.formation.cmf)}
-          ${createPositionRow('dmf','수비형 MF','bg-teal-500',state.formation.dmf)}
-          ${createPositionRow('def','수비수','bg-green-500',state.formation.def)}
-          ${createPositionRow('gk','골키퍼','bg-purple-500',state.formation.gk)}
+          ${rowOrder.map(pos => createPositionRow(pos)).join('')}
         </div>
       </div>
 
@@ -465,33 +539,136 @@ function createFormation(){
         <button onclick="clearFormation()" class="bg-gray-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-gray-700 text-xs sm:text-sm">포메이션 초기화</button>
       </div>
     </div>
+
+    <!-- 쿼터 미리보기 (세로로 1,2,3,4) -->
+    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+      <h3 class="text-base sm:text-lg font-semibold mb-3">쿼터 미리보기</h3>
+      <div class="space-y-4">
+        ${[1,2,3,4].map(n => createQuarterPreview(n)).join('')}
+      </div>
+    </div>
   </div>`;
 }
-function createPositionRow(position,label,color,slots){
-  const labels = positionLabels[position];
-  const spacing = position==='def'?'space-x-2 sm:space-x-4': position==='cmf'?'space-x-3 sm:space-x-6' : 'space-x-6 sm:space-x-10';
+function createPositionRow(position){
+  const slots = state.formation[position];
+  const labels = positionLabels[position] || [];
+  const color = position==='gk'?'bg-purple-500'
+              : position==='def'?'bg-green-500'
+              : position==='dmf'?'bg-teal-500'
+              : position==='cmf'?'bg-blue-500'
+              : position==='amf'?'bg-orange-500'
+              : 'bg-red-500';
+
   return `
-  <div class="flex justify-center ${spacing} min-h-[56px] sm:min-h-[72px] items-center">
+  <div class="row-grid cols-${slots.length} gap-2 sm:gap-4 px-4">
     ${slots.map((player,idx)=>`
-      <div class="drop-slot flex flex-col items-center"
+      <div class="cell drop-slot"
            data-position="${position}" data-slot-index="${idx}"
            ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)"
            ondrop="handleDrop(event, '${position}', ${idx})"
            onclick="openPicker('${position}', ${idx})">
+
         ${player?`
-          <div class="w-12 h-12 sm:w-16 sm:h-16 ${color} rounded-full flex items-center justify-center text-white text-[11px] sm:text-xs font-bold shadow-md cursor-pointer relative"
-               title="탭하면 교체/제거" onclick="openPicker('${position}', ${idx})">
-            <span class="text-center leading-tight px-1">${player.name}</span>
-            <div class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-xs text-white">×</div>
-          </div>` : `
+          <div class="relative">
+            <div class="w-12 h-12 sm:w-16 sm:h-16 ${color} rounded-full flex items-center justify-center text-white text-[11px] sm:text-xs font-bold shadow-md cursor-pointer no-select"
+                 title="탭하면 교체/제거"
+                 ontouchstart="onChipTouchStart('${position}', ${idx}, event)" ontouchend="onChipTouchEnd()">
+              <span class="text-center leading-tight px-1">${player.name}</span>
+            </div>
+            <button class="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-xs flex items-center justify-center"
+                    onclick="unassignSlot('${position}', ${idx}, event)">×</button>
+          </div>
+        ` : `
           <div class="w-12 h-12 sm:w-16 sm:h-16 border-2 border-dashed border-white/60 rounded-full flex items-center justify-center text-white/80 text-[11px] sm:text-xs">
             <span class="text-center">빈칸</span>
           </div>`}
-        <div class="text-white/90 text-[10px] sm:text-xs mt-1 font-medium">${labels[idx]||''}</div>
+
+        <div class="text-white/90 text-[10px] sm:text-xs font-medium">${labels[idx]||''}</div>
       </div>
     `).join('')}
   </div>`;
 }
+
+/* 쿼터 프리뷰 카드 (세로로 1,2,3,4) */
+function createQuarterPreview(n){
+  const q = state.quarters[n-1];
+  const title = `${n}쿼터`;
+  return `
+  <div class="border rounded-lg p-3">
+    <div class="flex items-center justify-between mb-2">
+      <div class="font-medium text-sm">${title} ${q?'':'(비어있음)'}</div>
+      <div class="flex items-center gap-2">
+        <button class="text-xs px-2 py-1 rounded ${q?'bg-blue-600 text-white':'bg-gray-100 text-gray-500 cursor-not-allowed'}"
+                ${q?`onclick="loadQuarter(${n})"`:'disabled'}>불러오기</button>
+        <button class="text-xs px-2 py-1 rounded bg-gray-100 hover:bg-gray-200 flex items-center"
+                onclick="clearQuarter(${n})">${icons.trash}<span class="ml-1">삭제</span></button>
+      </div>
+    </div>
+    <div class="mini-pitch relative">
+      <div class="half-line"></div><div class="box top"></div><div class="box bottom"></div>
+      ${miniRows(q)}
+    </div>
+  </div>`;
+}
+function miniRows(q){
+  // y 위치: 위에서부터 fw, amf, cmf, dmf, def, gk 순으로 고정
+  const positions = rowOrder;
+  const yPerc = [10, 28, 46, 64, 82, 94]; // 대략적 줄 위치(%)
+  return positions.map((pos,i)=>{
+    const arr = q ? q[pos] : new Array((state.formation[pos]||[]).length).fill(null);
+    const cols = arr.length||1;
+    const left = 8, right = 8; // 좌우 여백
+    const rowStyle = `top:${yPerc[i]}%; left:${left}px; right:${right}px; grid-template-columns: repeat(${cols},1fr)`;
+    return `
+      <div class="mini-row" style="${rowStyle}">
+        ${arr.map(p=> `<div class="mini-badge">${p?p.name:'-'}</div>`).join('')}
+      </div>`;
+  }).join('');
+}
+
+/* ================== BOTTOM SHEET ================== */
+function createBottomSheet(){
+  if(!state.ui.pickerOpen) return '';
+  const pos = state.ui.pickerPos, idx = state.ui.pickerSlot;
+  const inSlot = state.formation[pos][idx];
+  const assignedIds = new Set(Object.values(state.formation).flat().filter(Boolean).map(p=>p.id));
+  const q = state.ui.pickerSearch.trim().toLowerCase();
+  const candidates = state.players
+    .filter(p=>p.isPresent)
+    .filter(p=> !assignedIds.has(p.id) || (inSlot && p.id===inSlot.id))
+    .filter(p=> p.name.toLowerCase().includes(q));
+
+  return `
+  <div class="fixed inset-0 z-50">
+    <div class="absolute inset-0 bg-black/30" onclick="closePicker()"></div>
+    <div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl p-4 pt-3">
+      <div class="flex items-center justify-between mb-2">
+        <div class="text-sm text-gray-600">슬롯: <b>${pos.toUpperCase()} ${idx+1}</b></div>
+        <button class="text-gray-500 text-sm" onclick="closePicker()">닫기</button>
+      </div>
+      <div class="flex items-center gap-2 mb-3">
+        <input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="이름 검색" value="${state.ui.pickerSearch}"
+               oninput="setState({ ui:{...state.ui, pickerSearch:this.value} })">
+        ${inSlot?`<button class="px-3 py-2 text-xs rounded bg-gray-100 hover:bg-gray-200" onclick="unassignSlot('${pos}', ${idx}, event)">제거</button>`:''}
+        ${inSlot?`<button class="px-3 py-2 text-xs rounded bg-blue-100 hover:bg-blue-200" onclick="startSwap('${pos}', ${idx})">${state.swapBuffer?'스왑취소':'스왑시작'}</button>`:''}
+      </div>
+      <div class="max-h-[50vh] overflow-auto grid grid-cols-2 gap-2">
+        ${candidates.map(p=>`
+          <button class="p-2 rounded border text-left hover:bg-blue-50"
+                  onclick="${state.swapBuffer ? `finishSwap(${p.id})` : `assignToSlot(${p.id})`}">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium">${p.name}</span>
+              <span class="text-[10px] text-gray-500">${p.position} (${quartersPlayedCount(p.id)}/4)</span>
+            </div>
+          </button>
+        `).join('')}
+        ${candidates.length===0?`<div class="col-span-2 text-center text-sm text-gray-500 py-6">후보가 없습니다</div>`:''}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ================== PLAYERS PAGE ================== */
 function createPlayers(){
   const q = state.playerSearch.trim().toLowerCase();
   const list = q ? state.players.filter(p=>p.name.toLowerCase().includes(q)) : state.players;
@@ -529,23 +706,43 @@ function createPlayers(){
               <span class="font-medium text-xs sm:text-sm">${p.name}</span>
               <span class="text-[11px] opacity-75">${p.position}</span>
             </div>
+            <div class="text-[11px] text-gray-500 mt-1">(쿼터: ${quartersPlayedCount(p.id)}/4)</div>
             ${p.isPresent?'<div class="text-xs text-green-600 mt-1">✓ 출석</div>':''}
           </button>`).join('')}
       </div>
     </div>
 
-    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4">새 선수 추가</h3>
-      <div class="flex flex-col sm:flex-row gap-3 sm:gap-4">
-        <input class="border rounded-lg px-3 py-2 flex-1 text-sm" placeholder="선수 이름" value="${state.newPlayer.name}" onchange="updateNewPlayer('name', this.value)">
-        <select class="border rounded-lg px-3 py-2 text-sm" value="${state.newPlayer.position}" onchange="updateNewPlayer('position', this.value)">
-          <option value="FW">공격수</option><option value="MF">미드필더</option><option value="DF">수비수</option><option value="GK">골키퍼</option>
-        </select>
-        <button onclick="addPlayer()" class="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center justify-center text-sm">${icons.plus}<span class="ml-1">추가</span></button>
+    <div class="bg-white rounded-lg shadow-md">
+      <h3 class="text-base sm:text-lg font-semibold p-4 sm:p-6 border-b">선수 기록</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">이름</th>
+              <th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">포지션</th>
+              <th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">쿼터</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-200">
+            ${state.players.map(p=>`
+              <tr class="hover:bg-gray-50">
+                <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm font-medium text-gray-900">${p.name}</td>
+                <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap">
+                  <span class="px-2 py-1 text-xs rounded-full ${
+                    p.position==="FW"?"bg-red-100 text-red-800":
+                    p.position==="MF"?"bg-blue-100 text-blue-800":
+                    p.position==="DF"?"bg-green-100 text-green-800":"bg-purple-100 text-purple-800"}">${p.position}</span>
+                </td>
+                <td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm">${quartersPlayedCount(p.id)}/4</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
       </div>
     </div>
   </div>`;
 }
+
+/* ================== BOTTOM SHEET (선수 선택) ================== */
 function createBottomSheet(){
   if(!state.ui.pickerOpen) return '';
   const pos = state.ui.pickerPos, idx = state.ui.pickerSlot;
@@ -568,7 +765,7 @@ function createBottomSheet(){
       <div class="flex items-center gap-2 mb-3">
         <input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="이름 검색" value="${state.ui.pickerSearch}"
                oninput="setState({ ui:{...state.ui, pickerSearch:this.value} })">
-        ${inSlot?`<button class="px-3 py-2 text-xs rounded bg-gray-100 hover:bg-gray-200" onclick="unassignSlot('${pos}', ${idx})">제거</button>`:''}
+        ${inSlot?`<button class="px-3 py-2 text-xs rounded bg-gray-100 hover:bg-gray-200" onclick="unassignSlot('${pos}', ${idx}, event)">제거</button>`:''}
         ${inSlot?`<button class="px-3 py-2 text-xs rounded bg-blue-100 hover:bg-blue-200" onclick="startSwap('${pos}', ${idx})">${state.swapBuffer?'스왑취소':'스왑시작'}</button>`:''}
       </div>
       <div class="max-h-[50vh] overflow-auto grid grid-cols-2 gap-2">
@@ -577,7 +774,7 @@ function createBottomSheet(){
                   onclick="${state.swapBuffer ? `finishSwap(${p.id})` : `assignToSlot(${p.id})`}">
             <div class="flex items-center justify-between">
               <span class="text-sm font-medium">${p.name}</span>
-              <span class="text-[10px] text-gray-500">${p.position}</span>
+              <span class="text-[10px] text-gray-500">${p.position} (${quartersPlayedCount(p.id)}/4)</span>
             </div>
           </button>
         `).join('')}
