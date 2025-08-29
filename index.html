@@ -5,15 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>화랑FC 관리 시스템</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 포메이션 캡처용 -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <style>
     body { margin:0; padding:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
     .icon { display:inline-block; width:1rem; height:1rem; vertical-align:middle; }
     .icon-lg { width:1.5rem; height:1.5rem; }
-    
-    /* 모바일에서 아이콘 크기 조정 */
-    @media (min-width: 640px) {
-      .icon-lg { width:2rem; height:2rem; }
-    }
+    @media (min-width: 640px) { .icon-lg { width:2rem; height:2rem; } }
 
     /* ===== 포메이션 경기장 ===== */
     .pitch {
@@ -24,54 +22,23 @@
       overflow: hidden;
       box-shadow: inset 0 0 0 2px rgba(255,255,255,0.6);
     }
-    
-    @media (min-width: 640px) {
-      .pitch { min-height: 620px; }
-    }
-    
-    .pitch .half-line {
-      position:absolute; top:50%; left:0; right:0; height:2px; background:rgba(255,255,255,0.9);
-      transform: translateY(-50%);
-    }
-    .pitch .center-circle {
-      position:absolute; top:50%; left:50%; width:100px; height:100px; border:2px solid rgba(255,255,255,0.9);
-      border-radius:50%; transform:translate(-50%,-50%);
-    }
-    @media (min-width: 640px) {
-      .pitch .center-circle { width:140px; height:140px; }
-    }
-    
-    .pitch .center-dot {
-      position:absolute; top:50%; left:50%; width:6px; height:6px; background:#fff; border-radius:50%;
-      transform:translate(-50%,-50%);
-    }
-    @media (min-width: 640px) {
-      .pitch .center-dot { width:8px; height:8px; }
-    }
-    
-    .pitch .box {
-      position:absolute; left:50%; width:180px; height:80px; border:2px solid rgba(255,255,255,0.9);
-      transform: translateX(-50%);
-      background: rgba(255,255,255,0.06);
-    }
-    @media (min-width: 640px) {
-      .pitch .box { width:240px; height:120px; }
-    }
-    .pitch .box.top { top:10px; }
-    .pitch .box.bottom { bottom:10px; }
+    @media (min-width: 640px) { .pitch { min-height: 620px; } }
+    .pitch .half-line { position:absolute; top:50%; left:0; right:0; height:2px; background:rgba(255,255,255,0.9); transform: translateY(-50%); }
+    .pitch .center-circle { position:absolute; top:50%; left:50%; width:100px; height:100px; border:2px solid rgba(255,255,255,0.9); border-radius:50%; transform:translate(-50%,-50%); }
+    @media (min-width: 640px) { .pitch .center-circle { width:140px; height:140px; } }
+    .pitch .center-dot { position:absolute; top:50%; left:50%; width:6px; height:6px; background:#fff; border-radius:50%; transform:translate(-50%,-50%); }
+    @media (min-width: 640px) { .pitch .center-dot { width:8px; height:8px; } }
+    .pitch .box { position:absolute; left:50%; width:180px; height:80px; border:2px solid rgba(255,255,255,0.9); transform: translateX(-50%); background: rgba(255,255,255,0.06); }
+    @media (min-width: 640px) { .pitch .box { width:240px; height:120px; } }
+    .pitch .box.top { top:10px; } .pitch .box.bottom { bottom:10px; }
 
     /* 드래그 시각 효과 */
     .player-chip.dragging { opacity: .55; }
     .drop-slot.drag-over { outline: 2px dashed rgba(59,130,246,.9); outline-offset: 4px; }
-    
+
     /* 모바일 네비게이션 스크롤 */
-    .nav-scroll {
-      scrollbar-width: none;
-      -ms-overflow-style: none;
-    }
-    .nav-scroll::-webkit-scrollbar {
-      display: none;
-    }
+    .nav-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+    .nav-scroll::-webkit-scrollbar { display: none; }
   </style>
 </head>
 <body>
@@ -79,19 +46,30 @@
 <div id="root"></div>
 
 <script>
-/* -------------------- 앱 상태 (포메이션 구조 변경) -------------------- */
+/* -------------------- 공통 유틸 -------------------- */
+function deepClone(obj){ return JSON.parse(JSON.stringify(obj)); }
+function getEmptyFormation(){
+  return {
+    gk: [null],
+    def: [null, null, null, null, null],
+    dmf: [null, null, null],
+    cmf: [null, null, null, null],
+    amf: [null, null, null],
+    fw: [null, null]
+  };
+}
+
+/* -------------------- 앱 상태 (4쿼터 지원) -------------------- */
 let state = {
   activeTab: "dashboard",
   players: [],
   matches: [],
-  formation: {
-    gk: [null],                                    // GK (1명)
-    def: [null, null, null, null, null],          // LB, CB, CB, CB, RB (5명)
-    dmf: [null, null, null],                      // DMF, DMF, DMF (3명)
-    cmf: [null, null, null, null],                // LM, CM, CM, RM (4명)
-    amf: [null, null, null],                      // LW, AM, RW (3명)
-    fw: [null, null]                              // SS, ST (2명)
-  },
+  // 쿼터별 포메이션
+  formations: [getEmptyFormation(), getEmptyFormation(), getEmptyFormation(), getEmptyFormation()],
+  currentQuarter: 1, // 1~4
+  // 저장한 쿼터 이미지 (dataURL), 인덱스: 0~3
+  quarterImages: [null, null, null, null],
+
   newMatch: { opponent:"", location:"", date:"", result:"", goals:0, conceded:0 },
   newPlayer: { name:"", position:"FW" },
   draggedPlayer: null,
@@ -99,7 +77,10 @@ let state = {
   playerSearch: ""
 };
 
-// 포지션별 라벨 정의
+// 편의를 위해 현재 쿼터 포메이션 getter
+function currentFormation(){ return state.formations[state.currentQuarter-1]; }
+
+// 포지션 라벨
 const positionLabels = {
   gk: ['GK'],
   def: ['LB', 'CB', 'CB', 'CB', 'RB'],
@@ -109,15 +90,13 @@ const positionLabels = {
   fw: ['SS', 'ST']
 };
 
-const maxPositions = { gk: 1, def: 5, dmf: 3, cmf: 4, amf: 3, fw: 2 };
-
-/* -------------------- 초기 데이터 -------------------- */
+/* -------------------- 초기 경기 데이터 -------------------- */
 const initialMatches = [
   { id:1, opponent:"JK FC", location:"항공대학교", date:"2024-08-15", result:"W", score:"3-1", goals:3, conceded:1 },
   { id:2, opponent:"블루 유나이티드", location:"월드컵경기장", date:"2024-08-10", result:"L", score:"1-2", goals:1, conceded:2 }
 ];
 
-/* -------------------- 아이콘 (간단 SVG) -------------------- */
+/* -------------------- 아이콘 -------------------- */
 const icons = {
   plus:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>',
   users:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2m14 0h3v-2a7 7 0 00-7-7M9 7a4 4 0 118 0 4 4 0 01-8 0z"/></svg>',
@@ -128,19 +107,12 @@ const icons = {
   save:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h3"/></svg>',
   upload:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M8 12l4-4 4 4M12 8v8"/></svg>',
   download:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M8 12l4 4 4-4M12 16V4"/></svg>',
-  refresh:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>'
+  refresh:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>',
+  camera:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="4" stroke-width="2"/></svg>'
 };
 
-/* -------------------- 터치 & 드래그 통합 처리 -------------------- */
-let touchData = {
-  isDragging: false,
-  draggedElement: null,
-  draggedPlayer: null,
-  startX: 0,
-  startY: 0,
-  offsetX: 0,
-  offsetY: 0
-};
+/* -------------------- 터치 드래그 -------------------- */
+let touchData = { isDragging:false, draggedElement:null, draggedPlayer:null, startX:0, startY:0, offsetX:0, offsetY:0 };
 
 /* -------------------- 렌더/상태 -------------------- */
 function render(){ document.getElementById('root').innerHTML = createApp(); }
@@ -165,14 +137,9 @@ async function loadData(){
     setState({
       players: savedData.players || [],
       matches: savedData.matches || initialMatches,
-      formation: savedData.formation || {
-        gk: [null],
-        def: [null, null, null, null, null],
-        dmf: [null, null, null],
-        cmf: [null, null, null, null],
-        amf: [null, null, null],
-        fw: [null, null]
-      },
+      formations: savedData.formations && savedData.formations.length===4 ? savedData.formations : [getEmptyFormation(),getEmptyFormation(),getEmptyFormation(),getEmptyFormation()],
+      currentQuarter: savedData.currentQuarter || 1,
+      quarterImages: savedData.quarterImages || [null,null,null,null],
       saveStatus:"✓ 저장된 데이터 불러옴"
     });
     setTimeout(()=>setState({saveStatus:""}),1500);
@@ -185,24 +152,15 @@ async function loadData(){
     const res = await fetch('members.json?v=' + Date.now(), { cache: 'no-store' });
     if(res.ok){
       const json = await res.json();
-      const names = Array.isArray(json) ? json
-                  : (json && Array.isArray(json.members)) ? json.members
-                  : [];
+      const names = Array.isArray(json) ? json : (json && Array.isArray(json.members)) ? json.members : [];
       const cleaned = names.map(sanitizeName).filter(Boolean);
 
       const existingByName = new Map(state.players.map(p=>[p.name, p]));
       const merged = [];
-
       cleaned.forEach(name=>{
-        if(existingByName.has(name)){
-          merged.push(existingByName.get(name));
-          existingByName.delete(name);
-        }else{
-          merged.push({
-            id: Date.now()+Math.random(),
-            name,
-            position:"MF", goals:0, assists:0, attendance:0, isPresent:false
-          });
+        if(existingByName.has(name)){ merged.push(existingByName.get(name)); existingByName.delete(name); }
+        else{
+          merged.push({ id: Date.now()+Math.random(), name, position:"MF", goals:0, assists:0, attendance:0, isPresent:false });
         }
       });
       existingByName.forEach(v=>merged.push(v));
@@ -211,49 +169,41 @@ async function loadData(){
       setTimeout(()=>setState({saveStatus:""}),1500);
     }
   }catch(e){
-    console.log('members.json 파일이 없거나 로드 실패');
+    console.log('members.json 로드 실패(옵션)');
   }
 }
-
 function safeJSON(s, fallback){ try{ return JSON.parse(s); }catch{ return fallback; } }
 
 function autosave(){
   const data = { 
     players: state.players, 
     matches: state.matches, 
-    formation: state.formation,
+    formations: state.formations,
+    currentQuarter: state.currentQuarter,
+    quarterImages: state.quarterImages,
     savedAt: new Date().toISOString() 
   };
   localStorage.setItem('soccerTeamData', JSON.stringify(data));
 }
 
-function saveData(){ 
-  autosave(); 
-  setState({saveStatus:"✓ 저장 완료"}); 
-  setTimeout(()=>setState({saveStatus:""}),1500); 
-}
+function saveData(){ autosave(); setState({saveStatus:"✓ 저장 완료"}); setTimeout(()=>setState({saveStatus:""}),1500); }
 
 function downloadBackup(){
   const data = { 
-    players: state.players, 
-    matches: state.matches, 
-    formation: state.formation,
-    exportedAt: new Date().toISOString(), 
-    version:"1.3" 
+    players: state.players, matches: state.matches, 
+    formations: state.formations,
+    currentQuarter: state.currentQuarter,
+    quarterImages: state.quarterImages,
+    exportedAt: new Date().toISOString(), version:"1.4Q" 
   };
   const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"});
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); 
-  a.href = url; 
-  a.download = `hwarang-backup-${new Date().toISOString().slice(0,10)}.json`;
-  document.body.appendChild(a); 
-  a.click(); 
-  document.body.removeChild(a); 
-  URL.revokeObjectURL(url);
-  setState({saveStatus:"✓ 백업 다운로드됨"}); 
-  setTimeout(()=>setState({saveStatus:""}),1500);
+  const a = document.createElement('a'); a.href = url; a.download = `hwarang-backup-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  setState({saveStatus:"✓ 백업 다운로드됨"}); setTimeout(()=>setState({saveStatus:""}),1500);
 }
 
+/* -------------------- members.json 새로고침 -------------------- */
 async function reloadMembers(){
   setState({saveStatus:"🔄 members.json 다시 로드 중..."});
   try{
@@ -262,27 +212,19 @@ async function reloadMembers(){
       const json = await res.json();
       const names = Array.isArray(json) ? json : (json && Array.isArray(json.members)) ? json.members : [];
       const cleaned = names.map(sanitizeName).filter(Boolean);
-      
+
       const existingByName = new Map(state.players.map(p=>[p.name, p]));
       const merged = [];
-
       cleaned.forEach(name=>{
-        if(existingByName.has(name)){
-          merged.push(existingByName.get(name));
-          existingByName.delete(name);
-        }else{
-          merged.push({
-            id: Date.now()+Math.random(),
-            name,
-            position:"MF", goals:0, assists:0, attendance:0, isPresent:false
-          });
+        if(existingByName.has(name)){ merged.push(existingByName.get(name)); existingByName.delete(name); }
+        else{
+          merged.push({ id: Date.now()+Math.random(), name, position:"MF", goals:0, assists:0, attendance:0, isPresent:false });
         }
       });
       existingByName.forEach(v=>merged.push(v));
-
       setState({ players: merged, saveStatus:"✓ members.json 새로고침 완료" });
     } else {
-      setState({saveStatus:"❌ members.json 파일을 찾을 수 없습니다"});
+      setState({saveStatus:"❌ members.json 없음"});
     }
   }catch(e){
     setState({saveStatus:"❌ members.json 로드 실패"});
@@ -303,10 +245,8 @@ function importMembersFile(ev){
       const existingByName = new Map(state.players.map(p=>[p.name,p]));
       const merged = [];
       cleaned.forEach((name)=>{
-        if(existingByName.has(name)){ 
-          merged.push(existingByName.get(name)); 
-          existingByName.delete(name); 
-        } else {
+        if(existingByName.has(name)){ merged.push(existingByName.get(name)); existingByName.delete(name); }
+        else{
           merged.push({ id: Date.now()+Math.random(), name, position:"MF", goals:0, assists:0, attendance:0, isPresent:false });
         }
       });
@@ -315,200 +255,114 @@ function importMembersFile(ev){
       setTimeout(()=>setState({saveStatus:""}),1500);
     }catch(err){
       alert("JSON 파싱 실패: "+err.message);
-    } finally { 
-      ev.target.value=""; 
-    }
+    } finally { ev.target.value=""; }
   };
   reader.readAsText(file);
 }
 
-/* -------------------- 드래그&드롭 (포메이션 슬롯 시스템) -------------------- */
-// 드래그 시작 (마우스)
+/* -------------------- 드래그&드롭 (현재 쿼터 대상) -------------------- */
 function handleDragStart(ev, playerId){
   const player = state.players.find(p=>p.id===playerId);
   state.draggedPlayer = player;
   ev.dataTransfer.effectAllowed = "move";
   ev.currentTarget.classList.add("dragging");
 }
-
-function handleDragEnd(ev){
-  ev.currentTarget.classList.remove("dragging");
-  state.draggedPlayer = null;
-}
-
-function handleDragOver(ev){
-  ev.preventDefault();
-  ev.dataTransfer.dropEffect = "move";
-  ev.currentTarget.classList.add("drag-over");
-}
-
-function handleDragLeave(ev){
-  ev.currentTarget.classList.remove("drag-over");
-}
+function handleDragEnd(ev){ ev.currentTarget.classList.remove("dragging"); state.draggedPlayer = null; }
+function handleDragOver(ev){ ev.preventDefault(); ev.dataTransfer.dropEffect = "move"; ev.currentTarget.classList.add("drag-over"); }
+function handleDragLeave(ev){ ev.currentTarget.classList.remove("drag-over"); }
 
 function handleDrop(ev, position, slotIndex){
   ev.preventDefault();
   ev.currentTarget.classList.remove("drag-over");
   const dragged = state.draggedPlayer;
   if(!dragged) return;
-  
-  // 이미 배치된 선수인지 확인
-  let alreadyPlaced = false;
-  let currentPos = null;
-  let currentSlot = null;
-  
-  Object.entries(state.formation).forEach(([pos, slots]) => {
-    slots.forEach((player, idx) => {
-      if(player && player.id === dragged.id) {
-        alreadyPlaced = true;
-        currentPos = pos;
-        currentSlot = idx;
-      }
+
+  const formation = deepClone(currentFormation());
+
+  // 해당 슬롯 비어있어야 함
+  if(formation[position][slotIndex] !== null) return;
+
+  // 현재 쿼터 내에서 기존 위치 제거
+  Object.entries(formation).forEach(([pos, slots])=>{
+    slots.forEach((player, idx)=>{
+      if(player && player.id===dragged.id){ formation[pos][idx]=null; }
     });
   });
 
-  // 해당 슬롯이 이미 차있는지 확인
-  if(state.formation[position][slotIndex] !== null) return;
-
-  const formation = { ...state.formation };
-  
-  // 기존 위치에서 제거 (이미 배치된 경우)
-  if(alreadyPlaced) {
-    formation[currentPos] = [...formation[currentPos]];
-    formation[currentPos][currentSlot] = null;
-  }
-  
-  // 새 위치에 배치
-  formation[position] = [...formation[position]];
   formation[position][slotIndex] = dragged;
-  
-  setState({ formation });
+
+  const formations = deepClone(state.formations);
+  formations[state.currentQuarter-1] = formation;
+  setState({ formations });
 }
 
-// 터치 시작
+/* ----- 터치 DnD ----- */
 function handleTouchStart(ev, playerId){
   ev.preventDefault();
   const touch = ev.touches[0];
   const player = state.players.find(p=>p.id===playerId);
-  
   touchData.isDragging = true;
   touchData.draggedElement = ev.currentTarget;
   touchData.draggedPlayer = player;
-  touchData.startX = touch.clientX;
-  touchData.startY = touch.clientY;
-  
-  // 요소의 현재 위치 계산
   const rect = ev.currentTarget.getBoundingClientRect();
   touchData.offsetX = touch.clientX - rect.left;
   touchData.offsetY = touch.clientY - rect.top;
-  
-  // 시각적 피드백
+
   ev.currentTarget.classList.add("dragging");
   ev.currentTarget.style.position = "fixed";
   ev.currentTarget.style.zIndex = "1000";
   ev.currentTarget.style.pointerEvents = "none";
-  
-  // 터치 이벤트 등록
-  document.addEventListener('touchmove', handleTouchMove, {passive: false});
+
+  document.addEventListener('touchmove', handleTouchMove, {passive:false});
   document.addEventListener('touchend', handleTouchEnd);
 }
-
-// 터치 이동
 function handleTouchMove(ev){
   if(!touchData.isDragging) return;
   ev.preventDefault();
-  
   const touch = ev.touches[0];
-  const element = touchData.draggedElement;
-  
-  // 요소 위치 업데이트
-  element.style.left = (touch.clientX - touchData.offsetX) + 'px';
-  element.style.top = (touch.clientY - touchData.offsetY) + 'px';
-  
-  // 드롭 슬롯 하이라이트
-  const dropSlots = document.querySelectorAll('.drop-slot');
-  dropSlots.forEach(slot => slot.classList.remove('drag-over'));
-  
-  const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
-  const dropSlot = elementBelow?.closest('.drop-slot');
-  if(dropSlot && dropSlot.dataset.position && dropSlot.dataset.slotIndex !== undefined) {
-    const position = dropSlot.dataset.position;
-    const slotIndex = parseInt(dropSlot.dataset.slotIndex);
-    // 빈 슬롯인 경우에만 하이라이트
-    if(state.formation[position][slotIndex] === null) {
-      dropSlot.classList.add('drag-over');
-    }
+  const el = touchData.draggedElement;
+  el.style.left = (touch.clientX - touchData.offsetX) + 'px';
+  el.style.top  = (touch.clientY - touchData.offsetY) + 'px';
+
+  document.querySelectorAll('.drop-slot').forEach(s=>s.classList.remove('drag-over'));
+  const below = document.elementFromPoint(touch.clientX, touch.clientY);
+  const drop = below?.closest('.drop-slot');
+  if(drop && drop.dataset.position && drop.dataset.slotIndex !== undefined){
+    const pos = drop.dataset.position; const idx = +drop.dataset.slotIndex;
+    if(currentFormation()[pos][idx] === null){ drop.classList.add('drag-over'); }
   }
 }
-
-// 터치 끝
 function handleTouchEnd(ev){
   if(!touchData.isDragging) return;
-  
   const touch = ev.changedTouches[0];
-  const elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
-  const dropSlot = elementBelow?.closest('.drop-slot');
-  
-  // 드롭 처리
-  if(dropSlot && touchData.draggedPlayer) {
-    const position = dropSlot.dataset.position;
-    const slotIndex = parseInt(dropSlot.dataset.slotIndex);
-    
-    if(position !== undefined && slotIndex !== undefined) {
-      // 이미 배치된 선수인지 확인
-      let alreadyPlaced = false;
-      let currentPos = null;
-      let currentSlot = null;
-      
-      Object.entries(state.formation).forEach(([pos, slots]) => {
-        slots.forEach((player, idx) => {
-          if(player && player.id === touchData.draggedPlayer.id) {
-            alreadyPlaced = true;
-            currentPos = pos;
-            currentSlot = idx;
-          }
-        });
-      });
+  const below = document.elementFromPoint(touch.clientX, touch.clientY);
+  const drop = below?.closest('.drop-slot');
 
-      // 해당 슬롯이 비어있는 경우에만 배치
-      if(state.formation[position][slotIndex] === null) {
-        const formation = { ...state.formation };
-        
-        // 기존 위치에서 제거
-        if(alreadyPlaced) {
-          formation[currentPos] = [...formation[currentPos]];
-          formation[currentPos][currentSlot] = null;
-        }
-        
-        // 새 위치에 배치
-        formation[position] = [...formation[position]];
-        formation[position][slotIndex] = touchData.draggedPlayer;
-        
-        setState({ formation });
+  if(drop && touchData.draggedPlayer){
+    const pos = drop.dataset.position; const idx = +drop.dataset.slotIndex;
+    if(pos !== undefined && idx !== undefined){
+      const formation = deepClone(currentFormation());
+      if(formation[pos][idx] === null){
+        // 제거 후 배치
+        Object.entries(formation).forEach(([p, slots])=>{
+          slots.forEach((pl, i)=>{ if(pl && pl.id===touchData.draggedPlayer.id){ formation[p][i]=null; }});
+        });
+        formation[pos][idx] = touchData.draggedPlayer;
+        const formations = deepClone(state.formations);
+        formations[state.currentQuarter-1] = formation;
+        setState({ formations });
       }
     }
   }
-  
-  // 정리
-  if(touchData.draggedElement) {
+
+  if(touchData.draggedElement){
     touchData.draggedElement.classList.remove("dragging");
-    touchData.draggedElement.style.position = "";
-    touchData.draggedElement.style.zIndex = "";
-    touchData.draggedElement.style.pointerEvents = "";
-    touchData.draggedElement.style.left = "";
-    touchData.draggedElement.style.top = "";
+    Object.assign(touchData.draggedElement.style, {position:"", zIndex:"", pointerEvents:"", left:"", top:""});
   }
-  
-  document.querySelectorAll('.drop-slot').forEach(slot => {
-    slot.classList.remove('drag-over');
-  });
-  
+  document.querySelectorAll('.drop-slot').forEach(s=>s.classList.remove('drag-over'));
   document.removeEventListener('touchmove', handleTouchMove);
   document.removeEventListener('touchend', handleTouchEnd);
-  
-  touchData.isDragging = false;
-  touchData.draggedElement = null;
-  touchData.draggedPlayer = null;
+  touchData = { isDragging:false, draggedElement:null, draggedPlayer:null, startX:0, startY:0, offsetX:0, offsetY:0 };
 }
 
 /* -------------------- 선수/출석 -------------------- */
@@ -516,28 +370,14 @@ function addPlayer(){
   const name = sanitizeName(state.newPlayer.name);
   if(!name) return;
   setState({
-    players: [...state.players, { 
-      id:Date.now(), 
-      name, 
-      position: state.newPlayer.position || "FW", 
-      goals:0, assists:0, attendance:0, isPresent:false 
-    }],
+    players: [...state.players, { id:Date.now(), name, position: state.newPlayer.position || "FW", goals:0, assists:0, attendance:0, isPresent:false }],
     newPlayer: { name:"", position:"FW" }
   });
 }
-
 function toggleAttendance(id){
-  setState({ 
-    players: state.players.map(p=> p.id===id ? {...p, isPresent:!p.isPresent} : p ) 
-  });
+  setState({ players: state.players.map(p=> p.id===id ? {...p, isPresent:!p.isPresent} : p ) });
 }
-
-function clearAllAttendance(){ 
-  setState({ 
-    players: state.players.map(p=>({...p, isPresent:false})) 
-  }); 
-}
-
+function clearAllAttendance(){ setState({ players: state.players.map(p=>({...p, isPresent:false})) }); }
 function setActiveTab(tab){ setState({activeTab:tab}); }
 function updateNewPlayer(field, value){ setState({ newPlayer: { ...state.newPlayer, [field]: value } }); }
 function updateNewMatch(field, value){ setState({ newMatch: { ...state.newMatch, [field]: value } }); }
@@ -549,10 +389,7 @@ function addMatch(){
   if(!(m.opponent && m.location && m.date)) return;
   const score = `${m.goals}-${m.conceded}`;
   const newM = { ...m, id: Date.now(), score, goals: parseInt(m.goals)||0, conceded: parseInt(m.conceded)||0 };
-  setState({ 
-    matches:[...state.matches, newM], 
-    newMatch:{opponent:"",location:"",date:"",result:"",goals:0,conceded:0} 
-  });
+  setState({ matches:[...state.matches, newM], newMatch:{opponent:"",location:"",date:"",result:"",goals:0,conceded:0} });
 }
 
 /* -------------------- 통계 -------------------- */
@@ -565,37 +402,79 @@ function teamStats(){
   const goalsFor = ms.reduce((s,m)=>s+m.goals,0);
   const goalsAgainst = ms.reduce((s,m)=>s+m.conceded,0);
   const cleanSheets = ms.filter(m=>m.conceded===0).length;
-  return {
-    matches, wins, draws, losses, goalsFor, goalsAgainst, cleanSheets,
+  return { matches, wins, draws, losses, goalsFor, goalsAgainst, cleanSheets,
     winRate: matches?((wins/matches)*100).toFixed(1):0,
     avgGoalsFor: matches?(goalsFor/matches).toFixed(2):0,
     avgGoalsAgainst: matches?(goalsAgainst/matches).toFixed(2):0,
-    cleanSheetRate: matches?((cleanSheets/matches)*100).toFixed(1):0
-  };
+    cleanSheetRate: matches?((cleanSheets/matches)*100).toFixed(1):0 };
 }
 
-/* -------------------- 포메이션 슬롯 관련 함수들 -------------------- */
+/* -------------------- 쿼터 관련 -------------------- */
+// 현재 쿼터 전환
+function setQuarter(q){
+  if(q<1||q>4) return;
+  setState({ currentQuarter: q });
+}
+// 현재 쿼터 포메이션 슬롯에서 제거
 function removeFromFormationSlot(position, slotIndex){
-  const formation = { ...state.formation };
-  formation[position] = [...formation[position]];
-  formation[position][slotIndex] = null;
-  setState({ formation });
+  const formations = deepClone(state.formations);
+  const f = formations[state.currentQuarter-1];
+  f[position][slotIndex] = null;
+  setState({ formations });
+}
+// 현재 쿼터만 초기화
+function clearCurrentQuarter(){
+  const formations = deepClone(state.formations);
+  formations[state.currentQuarter-1] = getEmptyFormation();
+  setState({ formations });
+}
+// 전체 쿼터 초기화
+function clearAllQuarters(){
+  setState({ formations: [getEmptyFormation(),getEmptyFormation(),getEmptyFormation(),getEmptyFormation()], quarterImages:[null,null,null,null] });
 }
 
-function clearFormation(){
-  setState({ 
-    formation: {
-      gk: [null],
-      def: [null, null, null, null, null],
-      dmf: [null, null, null],
-      cmf: [null, null, null, null],
-      amf: [null, null, null],
-      fw: [null, null]
-    }
+// 선수별 몇 쿼터 뛴건지 계산
+function playedQuartersCount(playerId){
+  let c = 0;
+  state.formations.forEach(f=>{
+    const placed = Object.values(f).flat().some(p=>p && p.id===playerId);
+    if(placed) c++;
   });
+  return c;
 }
 
-/* -------------------- UI 생성 -------------------- */
+// 현재 쿼터 포메이션을 이미지로 저장하고, 다음 쿼터로 이동
+async function saveQuarterAsImage(){
+  const pitch = document.querySelector('.pitch');
+  if(!pitch){ setState({saveStatus:"❌ 캡처 대상 없음"}); return; }
+
+  // 최소 한 명이라도 배치되었는지 체크(선택)
+  const filled = Object.values(currentFormation()).flat().filter(v=>v!==null).length;
+  if(filled===0){
+    if(!confirm("배치된 선수가 없습니다. 그래도 저장할까요?")) return;
+  }
+
+  setState({saveStatus:"📸 쿼터 이미지 저장 중..."});
+  try{
+    const canvas = await html2canvas(pitch, {backgroundColor:null, scale:2});
+    const dataUrl = canvas.toDataURL('image/png');
+
+    const quarterImages = [...state.quarterImages];
+    quarterImages[state.currentQuarter-1] = dataUrl;
+
+    setState({ quarterImages, saveStatus: `✓ ${state.currentQuarter}쿼터 이미지 저장 완료` });
+
+    // 다음 쿼터로 이동(4쿼터면 유지)
+    if(state.currentQuarter < 4){
+      setQuarter(state.currentQuarter + 1);
+    }
+  }catch(e){
+    setState({saveStatus:"❌ 이미지 저장 실패"});
+  }
+  setTimeout(()=>setState({saveStatus:""}),1500);
+}
+
+/* -------------------- UI -------------------- */
 function createApp(){
   return `
   <div class="min-h-screen bg-gray-50">
@@ -623,7 +502,7 @@ function createNav(){
         ${tabs.map(t=>`
           <button onclick="setActiveTab('${t.id}')" class="py-3 sm:py-4 px-2 sm:px-1 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap flex items-center flex-shrink-0 ${state.activeTab===t.id?'border-blue-500 text-blue-600':'border-transparent text-gray-500 hover:text-gray-700'}">
             ${icons[t.icon]} 
-            <span class="ml-1 hidden xs:inline sm:inline">${window.innerWidth < 640 ? t.shortName : t.name}</span>
+            <span class="ml-1">${t.name}</span>
           </button>`).join('')}
       </div>
     </div>
@@ -692,7 +571,6 @@ function createDashboard(){
     </div>
   </div>`;
 }
-
 function statCard(label,value,icon,color){
   return `
   <div class="bg-white p-3 sm:p-4 rounded-lg shadow-md border-l-4 border-gray-100">
@@ -703,12 +581,8 @@ function statCard(label,value,icon,color){
       </div>
       <div class="icon-lg ${color} flex-shrink-0">${icons[icon]}</div>
     </div>
-  </div>`
-}
-
-function row(l,v){ 
-  return `<div class="flex justify-between text-sm sm:text-base"><span class="text-gray-600">${l}</span><span class="font-semibold">${v}</span></div>`
-}
+  </div>`}
+function row(l,v){ return `<div class="flex justify-between text-sm sm:text-base"><span class="text-gray-600">${l}</span><span class="font-semibold">${v}</span></div>`}
 
 function createMatches(){
   return `
@@ -720,7 +594,7 @@ function createMatches(){
         <input class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="경기장" value="${state.newMatch.location}" onchange="updateNewMatch('location', this.value)">
         <input type="date" class="border rounded-lg px-3 py-2 text-sm sm:text-base" value="${state.newMatch.date}" onchange="updateNewMatch('date', this.value)">
         <select class="border rounded-lg px-3 py-2 text-sm sm:text-base" value="${state.newMatch.result}" onchange="updateNewMatch('result', this.value)">
-          <option value="">결과 선택</option><option value="W">승리</option><option value="D">무승부</option><option value="L">패배</option>
+          <option value="">결과 선택</option><option value="W">승리</option><option value="D">무</option><option value="L">패</option>
         </select>
         <input type="number" class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="득점" value="${state.newMatch.goals}" onchange="updateNewMatch('goals', parseInt(this.value)||0)">
         <input type="number" class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="실점" value="${state.newMatch.conceded}" onchange="updateNewMatch('conceded', parseInt(this.value)||0)">
@@ -763,41 +637,68 @@ function createMatches(){
   </div>`;
 }
 
-/* ===== 포메이션 (완전히 새로운 슬롯 시스템) ===== */
+/* ===== 포메이션 (4쿼터 + 이미지 저장) ===== */
 function createFormation(){
   const present = getPresentPlayers();
-  const total = Object.values(state.formation).flat().filter(p => p !== null).length;
+  const filledCount = Object.values(currentFormation()).flat().filter(v=>v!==null).length;
 
+  // 현재 쿼터에서 출전여부는 별도지만, 칩에는 (x/4)로 총 쿼터 출전 수 표시
   return `
   <div class="space-y-4 sm:space-y-6">
+    <!-- 상단 컨트롤 -->
+    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <h3 class="text-base sm:text-lg font-semibold">포메이션 (쿼터 ${state.currentQuarter}/4)</h3>
+          <div class="flex gap-1">
+            ${[1,2,3,4].map(q=>`
+              <button onclick="setQuarter(${q})"
+                class="px-2 py-1 text-xs rounded ${state.currentQuarter===q?'bg-blue-600 text-white':'bg-gray-100 hover:bg-gray-200'}">${q}Q</button>
+            `).join('')}
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="clearCurrentQuarter()" class="px-3 py-2 text-xs sm:text-sm rounded bg-gray-600 text-white hover:bg-gray-700">현재 쿼터 초기화</button>
+          <button onclick="clearAllQuarters()" class="px-3 py-2 text-xs sm:text-sm rounded bg-gray-500 text-white hover:bg-gray-600">전체 쿼터 초기화</button>
+          <button onclick="saveQuarterAsImage()" class="px-3 py-2 text-xs sm:text-sm rounded bg-blue-600 text-white hover:bg-blue-700 flex items-center">
+            ${icons.camera} <span class="ml-1">저장(이미지)</span>
+          </button>
+        </div>
+      </div>
+      ${state.saveStatus?`<div class="mt-2 text-xs sm:text-sm text-blue-700">${state.saveStatus}</div>`:''}
+    </div>
+
+    <!-- 출석 인원 -->
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 sm:mb-4 gap-2">
-        <h3 class="text-base sm:text-lg font-semibold">출석 인원</h3>
-        <div class="text-xs sm:text-sm text-gray-600">출석: ${present.length}명 | 배치: ${total}/11명</div>
+        <h4 class="text-sm sm:text-base font-semibold">출석 인원</h4>
+        <div class="text-xs sm:text-sm text-gray-600">
+          현재 쿼터 배치: ${filledCount}/11명
+        </div>
       </div>
 
       <div class="flex flex-wrap gap-2 mb-2">
         ${present.map(p=>{
-          // 이미 배치된 선수인지 확인
-          const isPlaced = Object.values(state.formation).flat().some(player => player && player.id === p.id);
+          const placedThisQuarter = Object.values(currentFormation()).flat().some(pl => pl && pl.id===p.id);
+          const quarterPlayed = playedQuartersCount(p.id);
           return `
-          <div class="player-chip ${isPlaced ? 'bg-gray-200 text-gray-500' : 'bg-blue-100 text-blue-800'} px-2 sm:px-3 py-1 sm:py-2 rounded-full text-xs sm:text-sm font-medium ${isPlaced ? 'cursor-not-allowed' : 'cursor-move hover:bg-blue-200'} transition-colors flex items-center select-none"
-               ${!isPlaced ? 'draggable="true"' : ''}
-               ${!isPlaced ? `ondragstart="handleDragStart(event, ${p.id})"` : ''}
-               ${!isPlaced ? `ondragend="handleDragEnd(event)"` : ''}
-               ${!isPlaced ? `ontouchstart="handleTouchStart(event, ${p.id})"` : ''}
-               style="touch-action: none;">
+          <div class="player-chip ${placedThisQuarter ? 'bg-gray-200 text-gray-500' : 'bg-blue-100 text-blue-800'} px-2 sm:px-3 py-1 sm:py-2 rounded-full text-xs sm:text-sm font-medium ${placedThisQuarter ? 'cursor-not-allowed' : 'cursor-move hover:bg-blue-200'} transition-colors flex items-center select-none"
+               ${!placedThisQuarter ? 'draggable="true"' : ''}
+               ${!placedThisQuarter ? `ondragstart="handleDragStart(event, ${p.id})"` : ''}
+               ${!placedThisQuarter ? `ondragend="handleDragEnd(event)"` : ''}
+               ${!placedThisQuarter ? `ontouchstart="handleTouchStart(event, ${p.id})"` : ''} style="touch-action:none;">
             <span class="mr-1">${p.name}</span>
-            <span class="text-xs opacity-75">(${p.position})</span>
-            ${isPlaced ? '<span class="ml-1 text-xs">✓</span>' : ''}
+            <span class="text-[10px] sm:text-xs opacity-75">(${p.position})</span>
+            <span class="ml-1 text-[10px] sm:text-xs text-gray-600">(${quarterPlayed}/4)</span>
+            ${placedThisQuarter ? '<span class="ml-1 text-[10px]">✓</span>' : ''}
           </div>`;
         }).join('')}
       </div>
       ${present.length===0 ? '<p class="text-gray-500 text-xs sm:text-sm">출석한 선수가 없습니다. 선수 관리 탭에서 출석 체크 후 드래그하세요.</p>' : ''}
     </div>
 
+    <!-- 경기장 -->
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4">포메이션</h3>
       <div class="pitch">
         <div class="half-line"></div>
         <div class="center-circle"></div>
@@ -806,26 +707,29 @@ function createFormation(){
         <div class="box bottom"></div>
 
         <div class="relative h-full flex flex-col justify-between py-8 sm:py-16">
-          ${createPositionRow('fw', '공격수', 'bg-red-500', state.formation.fw)}
-          ${createPositionRow('amf', '공격형 MF', 'bg-orange-500', state.formation.amf)}
-          ${createPositionRow('cmf', '중앙 MF', 'bg-blue-500', state.formation.cmf)}
-          ${createPositionRow('dmf', '수비형 MF', 'bg-teal-500', state.formation.dmf)}
-          ${createPositionRow('def', '수비수', 'bg-green-500', state.formation.def)}
-          ${createPositionRow('gk', '골키퍼', 'bg-purple-500', state.formation.gk)}
+          ${createPositionRow('fw', '공격수', 'bg-red-500', currentFormation().fw)}
+          ${createPositionRow('amf', '공격형 MF', 'bg-orange-500', currentFormation().amf)}
+          ${createPositionRow('cmf', '중앙 MF', 'bg-blue-500', currentFormation().cmf)}
+          ${createPositionRow('dmf', '수비형 MF', 'bg-teal-500', currentFormation().dmf)}
+          ${createPositionRow('def', '수비수', 'bg-green-500', currentFormation().def)}
+          ${createPositionRow('gk', '골키퍼', 'bg-purple-500', currentFormation().gk)}
         </div>
       </div>
+    </div>
 
-      <div class="mt-3 sm:mt-4 text-center">
-        <span class="text-xs sm:text-sm font-medium ${total===11?'text-green-600': total>11?'text-red-600':'text-gray-700'}">
-          필드 선수: ${total}/11명 ${total>11?' (인원 초과!)':''} ${total===11?' ✓ 완료':''}
-        </span>
-      </div>
-
-      <div class="mt-3 sm:mt-4 text-center space-x-2">
-        <button onclick="clearFormation()"
-                class="bg-gray-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-gray-700 text-xs sm:text-sm">
-          포메이션 초기화
-        </button>
+    <!-- 저장된 쿼터 이미지 갤러리 -->
+    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+      <h4 class="text-sm sm:text-base font-semibold mb-3">저장된 쿼터 이미지</h4>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+        ${[0,1,2,3].map(i=>{
+          const img = state.quarterImages[i];
+          return `
+          <div class="border rounded-lg p-2 flex flex-col items-center justify-center">
+            <div class="text-xs mb-1">${i+1}Q</div>
+            ${img ? `<img src="${img}" alt="Q${i+1}" class="w-full rounded">`
+                  : `<div class="w-full h-24 bg-gray-100 rounded flex items-center justify-center text-gray-400 text-xs">아직 없음</div>`}
+          </div>`;
+        }).join('')}
       </div>
     </div>
   </div>`;
@@ -838,7 +742,6 @@ function createPositionRow(position, label, color, slots){
                   position === 'cmf' ? 'space-x-2 sm:space-x-4' :
                   position === 'amf' ? 'space-x-4 sm:space-x-8' : 
                   'space-x-6 sm:space-x-12';
-  
   return `
   <div class="flex justify-center ${spacing} min-h-[50px] sm:min-h-[68px] items-center">
     ${slots.map((player, idx) => `
@@ -848,11 +751,10 @@ function createPositionRow(position, label, color, slots){
            ondragover="handleDragOver(event)" 
            ondragleave="handleDragLeave(event)" 
            ondrop="handleDrop(event, '${position}', ${idx})">
-        
         ${player ? `
           <div class="w-12 h-12 sm:w-16 sm:h-16 ${color} rounded-full flex items-center justify-center text-white text-xs font-bold shadow-md cursor-pointer relative"
                title="클릭하여 제거" onclick="removeFromFormationSlot('${position}', ${idx})">
-            <span class="text-center leading-tight">${player.name}</span>
+            <span class="text-center leading-tight px-1">${player.name}</span>
             <div class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-xs text-white">×</div>
           </div>
         ` : `
@@ -860,19 +762,20 @@ function createPositionRow(position, label, color, slots){
             <span class="text-center">빈칸</span>
           </div>
         `}
-        
         <div class="text-white/90 text-xs mt-1 font-medium">${labels[idx]}</div>
       </div>
     `).join('')}
   </div>`;
 }
 
+/* ----- 선수 관리 탭 (검색 입력을 출석 카드 옆으로 붙임) ----- */
 function createPlayers(){
   const q = state.playerSearch.trim().toLowerCase();
   const list = q ? state.players.filter(p=>p.name.toLowerCase().includes(q)) : state.players;
 
   return `
   <div class="space-y-4 sm:space-y-6">
+
     <div class="bg-white p-4 rounded-lg shadow-md">
       <div class="flex flex-col sm:flex-row sm:items-center gap-3">
         <label class="bg-gray-800 text-white px-3 py-2 rounded-lg cursor-pointer text-xs sm:text-sm flex items-center">
@@ -883,33 +786,36 @@ function createPlayers(){
         <button onclick="downloadBackup()" class="bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg text-xs sm:text-sm flex items-center">
           ${icons.download} <span class="ml-1">데이터 백업</span>
         </button>
-
-        <div class="sm:ml-auto">
-          <input class="border rounded-lg px-3 py-2 w-full sm:w-64 text-sm" placeholder="선수 이름 검색"
-                 value="${state.playerSearch}" oninput="setState({playerSearch:this.value})">
-        </div>
       </div>
     </div>
 
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 gap-2">
         <h3 class="text-base sm:text-lg font-semibold">출석 체크</h3>
-        <div class="flex items-center justify-between sm:justify-end gap-4">
-          <div class="text-xs sm:text-sm text-gray-600">출석: ${state.players.filter(p=>p.isPresent).length}명</div>
+        <div class="flex items-center gap-3 w-full sm:w-auto">
+          <input class="border rounded-lg px-3 py-2 w-full sm:w-64 text-sm" placeholder="선수 이름 검색"
+                 value="${state.playerSearch}" oninput="setState({playerSearch:this.value})">
+          <div class="text-xs sm:text-sm text-gray-600 whitespace-nowrap">
+            출석: ${state.players.filter(p=>p.isPresent).length}명
+          </div>
           <button onclick="clearAllAttendance()" class="text-red-500 hover:text-red-700 text-xs">전체 해제</button>
         </div>
       </div>
 
       <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-        ${list.map(p=>`
+        ${list.map(p=>{
+          const qCnt = playedQuartersCount(p.id);
+          return `
           <button onclick="toggleAttendance(${p.id})"
                   class="p-2 sm:p-3 rounded-lg border text-left transition-colors ${p.isPresent?'bg-green-50 border-green-300 text-green-800':'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'}">
             <div class="flex items-center justify-between">
               <span class="font-medium text-xs sm:text-sm">${p.name}</span>
               <span class="text-xs opacity-75">${p.position}</span>
             </div>
+            <div class="text-[11px] text-gray-600 mt-1">(출전 ${qCnt}/4)</div>
             ${p.isPresent?'<div class="text-xs text-green-600 mt-1">✓ 출석</div>':''}
-          </button>`).join('')}
+          </button>`;
+        }).join('')}
       </div>
     </div>
 
