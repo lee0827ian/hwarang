@@ -306,20 +306,33 @@ function teamStats(){
   };
 }
 
-/* ================== QUARTERS (1~4) ================== */
+/* ================== QUARTERS (1~4) - 개선된 버전 ================== */
 function setCurrentQuarter(n){ setState({ currentQuarter:n }); }
-function saveCurrentQuarter(){
+
+// 개선된 포메이션 저장 함수 - 자동으로 다음 쿼터로 이동
+function saveCurrentFormation(){
   const copy = deepCopyFormation(state.formation);
   const idx = state.currentQuarter - 1;
-  const quarters = state.quarters.slice(); quarters[idx] = copy;
-  setState({ quarters, saveStatus:`💾 ${state.currentQuarter}쿼터가 저장되었습니다` });
-  setTimeout(()=>setState({saveStatus:""}),2000);
+  const quarters = state.quarters.slice(); 
+  quarters[idx] = copy;
+  
+  // 자동으로 다음 쿼터로 이동 (4쿼터면 1쿼터로 순환)
+  const nextQuarter = state.currentQuarter >= 4 ? 1 : state.currentQuarter + 1;
+  
+  setState({ 
+    quarters, 
+    currentQuarter: nextQuarter,
+    saveStatus:`💾 ${idx + 1}쿼터 포메이션이 저장되었습니다 → ${nextQuarter}쿼터로 이동` 
+  });
+  setTimeout(()=>setState({saveStatus:""}),2500);
 }
+
 function loadQuarter(n){
   const q = state.quarters[n-1]; if(!q) return;
-  setState({ formation: deepCopyFormation(q), currentQuarter:n, saveStatus:`📋 ${n}쿼터를 불러왔습니다` });
+  setState({ formation: deepCopyFormation(q), currentQuarter:n, saveStatus:`📋 ${n}쿼터 포메이션을 불러왔습니다` });
   setTimeout(()=>setState({saveStatus:""}),1500);
 }
+
 function clearQuarter(n){
   const quarters = state.quarters.slice(); quarters[n-1] = null;
   setState({ quarters, saveStatus:`🗑️ ${n}쿼터가 삭제되었습니다` });
@@ -338,9 +351,22 @@ function clearFormation(){
   };
   setState({ 
     formation: emptyFormation, 
-    saveStatus:"🧹 포메이션이 초기화되었습니다" 
+    saveStatus:"🧹 현재 포메이션이 초기화되었습니다" 
   });
   setTimeout(()=>setState({saveStatus:""}),1500);
+}
+
+// 저장된 쿼터 수 계산
+function getSavedQuartersCount(){
+  return state.quarters.filter(q => q !== null).length;
+}
+
+function quartersPlayedCount(playerId){
+  return state.quarters.reduce((acc,q)=>{
+    if(!q) return acc;
+    const found = Object.values(q).flat().some(p=>p && p.id===playerId);
+    return acc + (found?1:0);
+  },0);
 }
 
 function quartersPlayedCount(playerId){
@@ -574,21 +600,28 @@ function createMatches(){
   </div>`;
 }
 
-/* ===== Formation ===== */
+/* ===== Formation - 개선된 버전 ===== */
 function createFormation(){
   const present = getPresentPlayers();
   const total = Object.values(state.formation).flat().filter(Boolean).length;
+  const savedQuarters = getSavedQuartersCount();
 
   return `
   <div class="space-y-4 sm:space-y-6">
-    <!-- 상단: 쿼터 컨트롤 - 간소화 -->
+    <!-- 상단: 쿼터 컨트롤 - 개선된 버전 -->
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div class="flex items-center gap-2">
           <span class="text-sm text-gray-600 font-medium">현재 쿼터</span>
           ${[1,2,3,4].map(n=>`
             <button onclick="setCurrentQuarter(${n})"
-              class="px-3 py-2 rounded-lg text-sm font-medium transition-all ${state.currentQuarter===n?'bg-blue-600 text-white shadow-md':'bg-gray-100 hover:bg-gray-200'}">${n}</button>`).join('')}
+              class="px-3 py-2 rounded-lg text-sm font-medium transition-all relative ${state.currentQuarter===n?'bg-blue-600 text-white shadow-md':'bg-gray-100 hover:bg-gray-200'}">
+              ${n}
+              ${state.quarters[n-1] ? '<span class="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full"></span>' : ''}
+            </button>`).join('')}
+        </div>
+        <div class="text-sm text-gray-600">
+          <span class="font-medium">저장된 쿼터: <span class="text-blue-600">${savedQuarters}/4</span></span>
         </div>
       </div>
       <div class="mt-3 flex items-center justify-between text-sm">
@@ -597,7 +630,7 @@ function createFormation(){
       </div>
     </div>
 
-    <!-- 출석 명단(드래그 원천) -->
+    <!-- 출석 명단(드래그 원천) - 쿼터 정보 개선 -->
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
       <h3 class="text-base sm:text-lg font-semibold mb-3 flex items-center">${icons.users}<span class="ml-2">출석 인원</span></h3>
       <div class="flex flex-wrap gap-2">
@@ -610,7 +643,7 @@ function createFormation(){
                style="touch-action:none;">
             <span class="mr-1">${p.name}</span>
             <span class="text-xs opacity-75">(${p.position})</span>
-            <span class="ml-1 text-xs opacity-75">(${played}/4)</span>
+            <span class="ml-1 text-xs px-1 py-0.5 rounded ${played >= 2 ? 'bg-green-200 text-green-800' : played >= 1 ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-200 text-gray-600'}">${played}/4</span>
             ${placed?'<span class="ml-1 text-xs">✓</span>':''}
           </div>`;
         }).join('')}
@@ -620,7 +653,7 @@ function createFormation(){
 
     <!-- 포메이션 -->
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.target}<span class="ml-2">포메이션</span></h3>
+      <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.target}<span class="ml-2">포메이션 - ${state.currentQuarter}쿼터</span></h3>
       <div class="pitch">
         <div class="half-line"></div><div class="center-circle"></div><div class="center-dot"></div>
         <div class="box top"></div><div class="box bottom"></div>
@@ -636,26 +669,31 @@ function createFormation(){
         </span>
       </div>
 
-      <!-- 포메이션 액션 버튼들 - 현재쿼터저장 버튼 이동 -->
+      <!-- 포메이션 액션 버튼들 - 개선된 버전 -->
       <div class="mt-4 flex flex-col sm:flex-row justify-center items-center gap-3">
-        <button onclick="saveCurrentQuarter()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm flex items-center hover:bg-blue-700 transition-all hover:scale-105">
-          ${icons.save}<span class="ml-2">${state.currentQuarter}쿼터 저장</span>
+        <button onclick="saveCurrentFormation()" class="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm flex items-center hover:bg-blue-700 transition-all hover:scale-105 ${total < 11 ? 'opacity-75' : ''}">
+          ${icons.save}<span class="ml-2">포메이션 저장</span>
         </button>
-        <button onclick="clearFormation()" class="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 text-sm transition-all hover:scale-105">
+        <button onclick="clearFormation()" class="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 text-sm transition-all hover:scale-105">
           ${icons.trash}<span class="ml-2">포메이션 초기화</span>
         </button>
       </div>
+      ${total < 11 ? '<div class="text-center mt-2 text-xs text-orange-600">💡 11명을 모두 배치한 후 저장하세요</div>' : ''}
     </div>
 
     <!-- 쿼터 미리보기 (세로로 1,2,3,4) -->
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <h3 class="text-base sm:text-lg font-semibold mb-4 flex items-center">${icons.calendar}<span class="ml-2">쿼터 미리보기</span></h3>
+      <h3 class="text-base sm:text-lg font-semibold mb-4 flex items-center justify-between">
+        <span class="flex items-center">${icons.calendar}<span class="ml-2">쿼터 미리보기</span></span>
+        <span class="text-sm font-normal text-gray-600">저장됨: ${savedQuarters}/4</span>
+      </h3>
       <div class="space-y-4">
         ${[1,2,3,4].map(n => createQuarterPreview(n)).join('')}
       </div>
     </div>
   </div>`;
 }
+
 
 function createPositionRow(position){
   const slots = state.formation[position];
@@ -887,3 +925,4 @@ document.addEventListener('DOMContentLoaded', ()=>{ loadData(); });
 </script>
 </body>
 </html>
+
