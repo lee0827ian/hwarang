@@ -64,7 +64,7 @@
     /* 미니 프리뷰 피치 - 개선된 스타일 */
     .mini-pitch{ 
       position:relative; 
-      height:140px; /* 높이 약간 증가 */
+      height:160px; /* 높이 증가 */
       background:linear-gradient(#bfe3bf,#9bd49b); 
       border-radius:10px; 
       overflow:hidden; 
@@ -144,8 +144,7 @@ let state = {
   draggedPlayer: null,
   saveStatus: "",
   playerSearch: "",
-  ui: { pickerOpen:false, pickerPos:null, pickerSlot:null, pickerSearch:"" },
-  swapBuffer: null
+  ui: { pickerOpen:false, pickerPos:null, pickerSlot:null, pickerSearch:"" }
 };
 
 const positionLabels = {
@@ -289,9 +288,27 @@ function getPresentPlayers(){ return state.players.filter(p=>p.isPresent); }
 /* ================== MATCH ================== */
 function updateNewMatch(field,v){ setState({ newMatch:{...state.newMatch,[field]:v} }); }
 function addMatch(){
-  const m = state.newMatch; if(!(m.opponent && m.location && m.date)) return;
-  const score = `${m.goals}-${m.conceded}`;
-  const newM = { ...m, id:Date.now(), score, goals:parseInt(m.goals)||0, conceded:parseInt(m.conceded)||0 };
+  const m = state.newMatch; 
+  if(!(m.opponent && m.location && m.date)) {
+    toast("⚠️ 상대팀, 경기장, 날짜를 모두 입력해주세요");
+    return;
+  }
+  
+  // 날짜 유효성 검사
+  const matchDate = new Date(m.date);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (matchDate < today) {
+    toast("⚠️ 과거 날짜는 선택할 수 없습니다");
+    return;
+  }
+
+  // 득점/실점 음수 방지
+  const goals = Math.max(0, parseInt(m.goals) || 0);
+  const conceded = Math.max(0, parseInt(m.conceded) || 0);
+
+  const score = `${goals}-${conceded}`;
+  const newM = { ...m, id:Date.now(), score, goals, conceded };
   setState({ matches:[...state.matches,newM], newMatch:{opponent:"",location:"",date:"",result:"",goals:0,conceded:0} });
 }
 function teamStats(){
@@ -309,7 +326,6 @@ function teamStats(){
 /* ================== QUARTERS (1~4) - 개선된 버전 ================== */
 function setCurrentQuarter(n){ setState({ currentQuarter:n }); }
 
-// 개선된 포메이션 저장 함수 - 자동으로 다음 쿼터로 이동
 function saveCurrentFormation(){
   const copy = deepCopyFormation(state.formation);
   const idx = state.currentQuarter - 1;
@@ -339,7 +355,6 @@ function clearQuarter(n){
   setTimeout(()=>setState({saveStatus:""}),1500);
 }
 
-// 포메이션 초기화 함수 수정
 function clearFormation(){
   const emptyFormation = {
     gk: [null],
@@ -356,17 +371,8 @@ function clearFormation(){
   setTimeout(()=>setState({saveStatus:""}),1500);
 }
 
-// 저장된 쿼터 수 계산
 function getSavedQuartersCount(){
   return state.quarters.filter(q => q !== null).length;
-}
-
-function quartersPlayedCount(playerId){
-  return state.quarters.reduce((acc,q)=>{
-    if(!q) return acc;
-    const found = Object.values(q).flat().some(p=>p && p.id===playerId);
-    return acc + (found?1:0);
-  },0);
 }
 
 function quartersPlayedCount(playerId){
@@ -421,7 +427,7 @@ function removePlayerFromSlot(pos, idx, e){
 function openPicker(position, slotIndex){
   setState({ ui:{ pickerOpen:true, pickerPos:position, pickerSlot:slotIndex, pickerSearch:"" } });
 }
-function closePicker(){ setState({ ui:{...state.ui, pickerOpen:false, pickerPos:null, pickerSlot:null, pickerSearch:""}, swapBuffer:null }); }
+function closePicker(){ setState({ ui:{...state.ui, pickerOpen:false, pickerPos:null, pickerSlot:null, pickerSearch:""} }); }
 function assignToSlot(playerId){
   const {pickerPos:pos, pickerSlot:idx} = state.ui; if(pos==null) return;
   const formation = {...state.formation};
@@ -437,24 +443,6 @@ function assignToSlot(playerId){
 function unassignSlot(pos, idx, e){
   if(e){ e.stopPropagation(); e.preventDefault(); }
   const formation = {...state.formation}; formation[pos] = [...formation[pos]]; formation[pos][idx]=null; setState({ formation });
-}
-function startSwap(pos, idx){ if(state.swapBuffer){ setState({swapBuffer:null}); return; } setState({ swapBuffer:{position:pos, slotIndex:idx} }); }
-function finishSwap(targetPlayerId){
-  const buf = state.swapBuffer; if(!buf) return;
-  const formation = {...state.formation};
-  // 대상 선수 현재 위치
-  let tp=null, ts=null;
-  Object.entries(formation).forEach(([k,slots])=>{ slots.forEach((p,i)=>{ if(p && p.id===targetPlayerId){ tp=k; ts=i; } }); });
-  const a = formation[buf.position][buf.slotIndex];
-  if(!a){ // 빈칸 → 단순 배치
-    const player = state.players.find(p=>p.id===targetPlayerId);
-    if(tp!=null) formation[tp][ts]=null;
-    formation[buf.position][buf.slotIndex]=player;
-  }else{
-    if(tp!=null) formation[tp][ts]=a;
-    formation[buf.position][buf.slotIndex]= state.players.find(p=>p.id===targetPlayerId);
-  }
-  setState({ formation, swapBuffer:null }); closePicker();
 }
 
 /* 길게 누르면 제거 (모바일) */
@@ -778,9 +766,12 @@ function miniRows(q){
     const left = 8, right = 8;
     const rowStyle = `top:${yPerc[i]}%; left:${left}px; right:${right}px; grid-template-columns: repeat(${cols},1fr); gap: 4px;`;
     
+    // 골키퍼 색상 구분
+    const gkColor = pos === 'gk' ? 'bg-purple-600' : 'bg-blue-600';
+    
     return `
       <div class="mini-row" style="${rowStyle}">
-        ${playersInPosition.map(p=> `<div class="mini-badge" style="font-size: ${cols > 3 ? '9px' : '10px'};">${p.name}</div>`).join('')}
+        ${playersInPosition.map(p=> `<div class="mini-badge ${gkColor}" style="font-size: ${cols > 3 ? '9px' : '10px'};">${p.name}</div>`).join('')}
       </div>`;
   }).join('');
 }
@@ -809,12 +800,11 @@ function createBottomSheet(){
         <input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="이름 검색..." value="${state.ui.pickerSearch}"
                oninput="setState({ ui:{...state.ui, pickerSearch:this.value} })">
         ${inSlot?`<button class="px-3 py-2 text-xs rounded-lg bg-red-100 hover:bg-red-200 text-red-700" onclick="unassignSlot('${pos}', ${idx}, event)">제거</button>`:''}
-        ${inSlot?`<button class="px-3 py-2 text-xs rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700" onclick="startSwap('${pos}', ${idx})">${state.swapBuffer?'스왑취소':'스왑시작'}</button>`:''}
       </div>
       <div class="max-h-[50vh] overflow-auto grid grid-cols-1 gap-2">
         ${candidates.map(p=>`
           <button class="p-3 rounded-lg border text-left hover:bg-blue-50 hover:border-blue-200 transition-all"
-                  onclick="${state.swapBuffer ? `finishSwap(${p.id})` : `assignToSlot(${p.id})`}">
+                  onclick="assignToSlot(${p.id})">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
                 <span class="text-sm font-medium">${p.name}</span>
@@ -925,4 +915,3 @@ document.addEventListener('DOMContentLoaded', ()=>{ loadData(); });
 </script>
 </body>
 </html>
-
