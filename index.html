@@ -367,7 +367,7 @@ function maybeEnableButtons() {
 }
 
 function handleAuthClick() {
-    tokenClient.requestAccessToken({ prompt: 'consent' });
+    tokenClient.requestAccessToken({ prompt: '' });
 }
 
 function handleSignoutClick() {
@@ -466,3 +466,4 @@ document.addEventListener('DOMContentLoaded', ()=>{
 <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoad()"></script>
 </body>
 </html>
+
