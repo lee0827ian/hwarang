@@ -307,7 +307,7 @@ function sanitizeName(raw){
 function safeJSON(s, fallback){ try{ return JSON.parse(s); }catch{ return fallback; } }
 function deepCopyFormation(f){ return JSON.parse(JSON.stringify(f)); }
 
-// --- GOOGLE SHEETS API (NEW with DEBUG LOGS) ---
+// --- GOOGLE SHEETS API (NEW with AUTO-LOGIN) ---
 function gapiLoad() {
     console.log("DEBUG: gapiLoad() 함수 호출됨.");
     try {
@@ -328,9 +328,7 @@ function initializeGapiClient() {
         gapiInited = true;
         maybeEnableButtons();
     }, (err) => {
-        // 👇 에러 콜백 추가
         console.error("DEBUG: GAPI 클라이언트 초기화 실패! 상세 에러:", err);
-        console.error("JSON 형태:", JSON.stringify(err, null, 2));
         setState({ saveStatus: "❌ Google API 초기화 실패. 콘솔(F12)을 확인해주세요." });
     });
 }
@@ -366,6 +364,7 @@ function maybeEnableButtons() {
     }
 }
 
+// 👈 변경된 부분: 자동 로그인을 위한 함수 추가
 function handleAuthClick() {
     tokenClient.requestAccessToken({ prompt: '' });
 }
@@ -466,4 +465,3 @@ document.addEventListener('DOMContentLoaded', ()=>{
 <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoad()"></script>
 </body>
 </html>
-
