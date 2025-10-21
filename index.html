@@ -184,6 +184,11 @@ function handleClientLoad() {
   gapi.load('client:auth2', initGapiClient);
 }
 
+// --- GOOGLE SHEETS API ---
+function handleClientLoad() {
+  gapi.load('client:auth2', initGapiClient);
+}
+
 function initGapiClient() {
   gapi.client.init({
     apiKey: API_KEY,
@@ -195,8 +200,9 @@ function initGapiClient() {
     gapi.auth2.getAuthInstance().isSignedIn.listen(updateSigninStatus);
     updateSigninStatus(gapi.auth2.getAuthInstance().isSignedIn.get());
   }, (err) => {
-    console.error("Error initializing GAPI client", err);
-    setState({ saveStatus: "❌ Google API 초기화 실패" });
+    // 👇 이 부분을 수정하여 에러 내용을 콘솔에 명확하게 출력합니다.
+    console.error("Google API 초기화 실패 - 상세 에러:", err);
+    setState({ saveStatus: "❌ Google API 초기화 실패. 콘솔(F12)을 확인해주세요." });
   });
 }
 
@@ -582,3 +588,4 @@ document.addEventListener('DOMContentLoaded', ()=>{
 <script async defer src="https://apis.google.com/js/api.js" onload="this.onload=function(){};handleClientLoad()" onreadystatechange="if (this.readyState === 'complete') this.onload()"></script>
 </body>
 </html>
+
