@@ -122,130 +122,6 @@
 <body>
 <div id="root"></div>
 
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>화랑FC 관리 시스템</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    body { margin:0; padding:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
-    .icon { display:inline-block; width:1rem; height:1rem; vertical-align:middle; }
-    .icon-lg { width:1.5rem; height:1.5rem; }
-    @media (min-width:640px){ .icon-lg{ width:2rem; height:2rem; } }
-
-    /* Pitch */
-    .pitch{ position:relative; min-height:420px; background:linear-gradient(#bfe3bf,#9bd49b); border-radius:14px; overflow:hidden; box-shadow:inset 0 0 0 2px rgba(255,255,255,.6) }
-    @media (min-width:640px){ .pitch{ min-height:640px; } }
-    .pitch .half-line{ position:absolute; top:50%; left:0; right:0; height:2px; background:rgba(255,255,255,.9); transform:translateY(-50%) }
-    .pitch .center-circle{ position:absolute; top:50%; left:50%; width:120px; height:120px; border:2px solid rgba(255,255,255,.9); border-radius:50%; transform:translate(-50%,-50%) }
-    @media (min-width:640px){ .pitch .center-circle{ width:160px; height:160px } }
-    .pitch .center-dot{ position:absolute; top:50%; left:50%; width:8px; height:8px; background:#fff; border-radius:50%; transform:translate(-50%,-50%) }
-    .pitch .box{ position:absolute; left:50%; width:220px; height:100px; border:2px solid rgba(255,255,255,.9); transform:translateX(-50%); background:rgba(255,255,255,.06) }
-    @media (min-width:640px){ .pitch .box{ width:260px; height:140px } }
-    .pitch .box.top{ top:10px } .pitch .box.bottom{ bottom:10px }
-
-    /* DnD */
-    .player-chip.dragging{ opacity:.55 }
-    .drop-slot.drag-over{ outline:2px dashed rgba(59,130,246,.9); outline-offset:4px }
-
-    /* Mobile nav scroll */
-    .nav-scroll{ scrollbar-width:none; -ms-overflow-style:none }
-    .nav-scroll::-webkit-scrollbar{ display:none }
-
-    /* 균등 그리드 - 개선된 버전 */
-    .row-grid { 
-      display:grid; 
-      align-items:center; 
-      width: 100%;
-      gap: 8px;
-    }
-    .row-grid.cols-1{ grid-template-columns: 1fr; }
-    .row-grid.cols-2{ grid-template-columns: 1fr 1fr; }
-    .row-grid.cols-3{ grid-template-columns: 1fr 1fr 1fr; }
-    .row-grid.cols-4{ grid-template-columns: 1fr 1fr 1fr 1fr; }
-    .row-grid.cols-5{ grid-template-columns: 1fr 1fr 1fr 1fr 1fr; }
-    
-    .row-grid .cell{ 
-      display:flex; 
-      flex-direction:column; 
-      align-items:center; 
-      justify-content:center;
-      gap:4px; 
-      min-height: 80px;
-    }
-    
-    @media (min-width:640px) {
-      .row-grid {
-        gap: 12px;
-      }
-      .row-grid .cell {
-        min-height: 100px;
-      }
-    }
-
-    /* 미니 프리뷰 피치 - 개선된 스타일 */
-    .mini-pitch{ 
-      position:relative; 
-      height:160px; 
-      background:linear-gradient(#bfe3bf,#9bd49b); 
-      border-radius:10px; 
-      overflow:hidden; 
-      box-shadow:inset 0 0 0 2px rgba(255,255,255,.5);
-    }
-    .mini-pitch .half-line{ position:absolute; top:50%; left:0; right:0; height:2px; background:rgba(255,255,255,.7); transform:translateY(-50%) }
-    .mini-pitch .box{ position:absolute; left:50%; width:120px; height:52px; border:2px solid rgba(255,255,255,.7); transform:translateX(-50%); background:rgba(255,255,255,.06) }
-    .mini-pitch .box.top{ top:6px } 
-    .mini-pitch .box.bottom{ bottom:6px }
-    .mini-row{ 
-      position:absolute; 
-      display:grid; 
-      place-items:center; 
-    }
-    .mini-badge{ 
-      font-size:10px; 
-      line-height:1.2; 
-      color:#fff; 
-      background:rgba(59,130,246,.9); 
-      padding:3px 6px; 
-      border-radius:999px; 
-      white-space:nowrap; 
-      max-width:90px; 
-      overflow:hidden; 
-      text-overflow:ellipsis; 
-      font-weight: 500;
-      border: 1px solid rgba(255,255,255,0.3);
-    }
-
-    /* 길게 누르기 힌트 감안한 선택 방지 */
-    .no-select{ user-select:none; -webkit-user-select:none; }
-    
-    /* 플레이어 칩 호버 효과 개선 */
-    .player-chip-field {
-      transition: all 0.2s ease;
-      cursor: pointer;
-    }
-    .player-chip-field:hover {
-      transform: scale(1.05);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    }
-    
-    /* 빈 슬롯 스타일 개선 */
-    .empty-slot {
-      border: 2px dashed rgba(255,255,255,0.4);
-      background: rgba(255,255,255,0.1);
-      transition: all 0.2s ease;
-    }
-    .empty-slot:hover {
-      border-color: rgba(255,255,255,0.7);
-      background: rgba(255,255,255,0.2);
-    }
-  </style>
-</head>
-<body>
-<div id="root"></div>
-
 <script>
 // --- Google Sheets Configuration ---
 const API_KEY = 'AIzaSyAxrFMgnW6NUu1zElfmPne5tanl0NEvdc0';
@@ -257,7 +133,7 @@ const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
 // --- STATE ---
 let state = {
   activeTab: "dashboard",
-  players: [], // Google Sheets 'Members' 시트에서 로드
+  players: [], // Google Sheets 'Members' 시트 또는 로컬 JSON에서 로드
   matches: [], // Google Sheets 'Matches' 시트에서 로드
   formation: {
     gk: [null], def: [null,null,null,null], dmf: [null,null], cmf: [null,null,null], amf: [null,null], fw: [null]
@@ -288,7 +164,8 @@ const icons = {
   shield:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 22s8-3 8-10V6l-8-4-8 4v6c0 7 8 10 8 10z"/></svg>',
   save:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h3"/></svg>',
   sync:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>',
-  trash:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5-4h4a2 2 0 012 2v2H8V5a2 2 0 012-2z"/></svg>'
+  trash:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5-4h4a2 2 0 012 2v2H8V5a2 2 0 012-2z"/></svg>',
+  download:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>'
 };
 
 // --- RENDER/STATE ---
@@ -335,7 +212,6 @@ function initializeGapiClient() {
 
 function gisLoad() {
     console.log("DEBUG: gisLoad() 함수 호출됨.");
-    console.log("DEBUG: google.accounts 객체 확인:", typeof google, google.accounts);
     try {
         tokenClient = google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
@@ -356,7 +232,7 @@ function gisLoad() {
     }
 }
 
-// 👇 새로 추가된 함수: 기존 토큰 확인
+// 👇 기존 토큰 확인 함수
 function checkForExistingToken() {
     console.log("DEBUG: 기존 토큰 확인 중...");
     const token = gapi.client.getToken();
@@ -375,7 +251,6 @@ function maybeEnableButtons() {
     console.log(`DEBUG: maybeEnableButtons() 호출. gapiInited=${gapiInited}, gisInited=${gisInited}`);
     if (gapiInited && gisInited) {
         console.log("DEBUG: 두 라이브러리 모두 로드 완료. 버튼 활성화.");
-        // 👇 여기서 기존 토큰 확인 함수 호출
         if (!state.isGapiSignedIn) {
             checkForExistingToken();
         }
@@ -401,10 +276,19 @@ async function loadAllDataFromSheets() {
   try {
     const membersResponse = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Members!A2:B' });
     const membersRows = membersResponse.result.values || [];
-    const players = membersRows.map(row => ({ id: Date.now() + Math.random(), name: sanitizeName(row[0]), position: row[1] || 'MF', isPresent: false, }));
+    
+    // Google Sheets 데이터 로드 시 player ID는 Sheets의 인덱스를 기반으로 재설정 (안정성 확보)
+    const players = membersRows.map((row, index) => ({ 
+        id: index + 1, // 간단한 인덱스 ID 사용
+        name: sanitizeName(row[0]), 
+        position: row[1] || 'MF', 
+        isPresent: false, 
+    }));
+    
     const matchesResponse = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: 'Matches!A2:H' });
     const matchesRows = matchesResponse.result.values || [];
     const matches = matchesRows.map(row => ({ id: row[0], date: row[1], opponent: row[2], location: row[3], result: row[4], goals: parseInt(row[5]) || 0, conceded: parseInt(row[6]) || 0, scorers: row[7] || '', score: `${row[5] || 0}-${row[6] || 0}` }));
+    
     setState({ players, matches, saveStatus: "✅ 데이터 동기화 완료" });
     setTimeout(() => setState({ saveStatus: "" }), 2000);
   } catch (err) {
@@ -413,11 +297,80 @@ async function loadAllDataFromSheets() {
   }
 }
 
-async function addMatchToSheet(matchData) { /* ... (기존과 동일) */ }
+/**
+ * 🛠️ FIX: 미구현이었던 경기 기록 저장 함수 완성
+ */
+async function addMatchToSheet(matchData) {
+  const rowData = [
+    new Date().getTime().toString(), // 임시 ID
+    matchData.date,
+    matchData.opponent,
+    matchData.location,
+    matchData.result,
+    matchData.goals.toString(),
+    matchData.conceded.toString(),
+    matchData.scorers,
+  ];
+
+  try {
+    const response = await gapi.client.sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Matches!A2:H',
+      valueInputOption: 'USER_ENTERED',
+      resource: { values: [rowData] },
+    });
+
+    console.log("경기 데이터 시트 저장 성공:", response);
+    
+    // 저장 후, 최신 데이터를 다시 불러와 UI를 업데이트합니다.
+    await loadAllDataFromSheets(); 
+    
+    // 새 경기 입력 필드 초기화
+    setState({ 
+      newMatch: { opponent:"", location:"", date:"", result:"", goals:0, conceded:0, scorers:"" },
+      saveStatus: `✅ 경기 기록 저장 완료: ${matchData.opponent} (${matchData.result})` 
+    });
+    
+    setTimeout(() => setState({ saveStatus: "" }), 2500);
+
+  } catch (err) {
+    console.error("경기 데이터 시트 저장 실패:", err);
+    setState({ saveStatus: "❌ 경기 기록 저장 실패. 권한을 확인해주세요." });
+  }
+}
+
 
 // --- LOCAL STORAGE (for formation/quarters) ---
 function saveLocalData(){ const data = { formation: state.formation, quarters: state.quarters, currentQuarter: state.currentQuarter, savedAt: new Date().toISOString() }; localStorage.setItem('hwarangLocalData', JSON.stringify(data)); }
 function loadLocalData(){ const saved = localStorage.getItem('hwarangLocalData'); const savedData = saved ? safeJSON(saved, null) : null; if(savedData){ setState({ formation: savedData.formation || state.formation, quarters: savedData.quarters || [null,null,null,null], currentQuarter: savedData.currentQuarter || 1, }); } }
+
+/**
+ * 🛠️ FIX: 로컬 JSON 파일에서 초기 구성원 목록 로드 (Google Sheets 실패 시 대안)
+ */
+async function loadLocalMembersJson() {
+    try {
+        const response = await fetch('members.json');
+        if (!response.ok) {
+            console.warn("DEBUG: 로컬 members.json 파일을 찾을 수 없습니다. Google Sheets 데이터에 의존합니다.");
+            return;
+        }
+        const data = await response.json();
+        // JSON 파일의 단순 이름 목록을 앱이 사용하는 객체 구조로 변환
+        const players = data.members.map((name, index) => ({ 
+            id: Date.now() + index, // 임시 ID
+            name: sanitizeName(name), 
+            position: 'MF', // JSON 파일에 포지션 정보가 없으므로 기본값 MF 설정
+            isPresent: false, 
+        }));
+        
+        // Google Sheets 로드 실패 시를 대비하여 초기 players 목록을 로컬 JSON 데이터로 설정
+        setState({ players });
+        console.log(`DEBUG: 로컬 members.json에서 ${players.length}명의 선수 로드 완료.`);
+    } catch (err) {
+        console.error("DEBUG: 로컬 members.json 파일 로드 및 처리 실패:", err);
+    }
+}
+
 
 // --- PLAYER / ATTEND ---
 function toggleAttendance(id){ setState({ players: state.players.map(p=> p.id===id ? {...p, isPresent:!p.isPresent} : p ) }); saveLocalData(); }
@@ -445,15 +398,13 @@ function handleDragStart(ev, playerId){ const player = state.players.find(p=>p.i
 function handleDragEnd(ev){ ev.currentTarget.classList.remove("dragging"); state.draggedPlayer=null; }
 function handleDragOver(ev){ ev.preventDefault(); ev.dataTransfer.dropEffect="move"; ev.currentTarget.classList.add("drag-over"); }
 function handleDragLeave(ev){ ev.currentTarget.classList.remove("drag-over"); }
-function handleDrop(ev, position, slotIndex){ ev.preventDefault(); ev.currentTarget.classList.remove("drag-over"); const dragged = state.draggedPlayer; if(!dragged) return; const count = fieldCount(state.formation); const already = Object.values(state.formation).flat().some(p=>p && p.id===draggedPlayer.id); if(!already && count>=11){ toast("⚠️ 필드에는 최대 11명만 배치 가능합니다"); return; } if(state.formation[position][slotIndex] !== null) return; const formation = {...state.formation}; Object.keys(formation).forEach(k=>{ formation[k] = formation[k].map(x => x && x.id===draggedPlayer.id ? null : x); }); formation[position] = [...formation[position]]; formation[position][slotIndex] = dragged; setState({ formation }); state.draggedPlayer=null; }
+function handleDrop(ev, position, slotIndex){ ev.preventDefault(); ev.currentTarget.classList.remove("drag-over"); const dragged = state.draggedPlayer; if(!dragged) return; const count = fieldCount(state.formation); const already = Object.values(state.formation).flat().some(p=>p && p.id===dragged.id); if(!already && count>=11){ toast("⚠️ 필드에는 최대 11명만 배치 가능합니다"); return; } if(state.formation[position][slotIndex] !== null) return; const formation = {...state.formation}; Object.keys(formation).forEach(k=>{ formation[k] = formation[k].map(x => x && x.id===dragged.id ? null : x); }); formation[position] = [...formation[position]]; formation[position][slotIndex] = dragged; setState({ formation }); state.draggedPlayer=null; }
 function removePlayerFromSlot(pos, idx, e){ if(e){ e.stopPropagation(); e.preventDefault(); } const formation = {...state.formation}; formation[pos] = [...formation[pos]]; formation[pos][idx]=null; setState({ formation, saveStatus:"✅ 선수가 제거되었습니다" }); setTimeout(()=>setState({saveStatus:""}),1000); }
 function openPicker(position, slotIndex){ setState({ ui:{ pickerOpen:true, pickerPos:position, pickerSlot:slotIndex, pickerSearch:"" } }); }
 function closePicker(){ setState({ ui:{...state.ui, pickerOpen:false, pickerPos:null, pickerSlot:null, pickerSearch:""} }); }
 function assignToSlot(playerId){ const {pickerPos:pos, pickerSlot:idx} = state.ui; if(pos==null) return; const formation = {...state.formation}; const count = fieldCount(formation); const already = Object.values(formation).flat().some(p=>p && p.id===playerId); if(!already && count>=11){ toast("⚠️ 필드에는 최대 11명만 배치 가능합니다"); return; } const player = state.players.find(p=>p.id===playerId); Object.keys(formation).forEach(k=>{ formation[k] = formation[k].map(x => x && x.id===playerId ? null : x); }); formation[pos] = [...formation[pos]]; formation[pos][idx] = player; setState({ formation }); closePicker(); }
 function unassignSlot(pos, idx, e){ if(e){ e.stopPropagation(); e.preventDefault(); } const formation = {...state.formation}; formation[pos] = [...formation[pos]]; formation[pos][idx]=null; setState({ formation }); }
-let longPressTimer=null;
-function onChipTouchStart(pos, idx, e){ longPressTimer = setTimeout(()=>{ removePlayerFromSlot(pos, idx); }, 500); }
-function onChipTouchEnd(){ clearTimeout(longPressTimer); }
+// 롱 프레스 관련 충돌 로직 삭제됨
 
 // --- UI ---
 function createApp(){ return `<div class="min-h-screen bg-gray-50">${createNav()}<main class="max-w-7xl mx-auto py-4 sm:py-6 px-3 sm:px-4 lg:px-8">${state.activeTab==='dashboard'? createDashboard():''}${state.activeTab==='matches'? createMatches():''}${state.activeTab==='formation'? createFormation():''}${state.activeTab==='members'? createMembers():''}${state.activeTab==='sync'? createSync():''}</main>${createBottomSheet()}</div>`; }
@@ -462,8 +413,8 @@ function createDashboard(){ const s = teamStats(); const top = [...state.players
 function statCard(label,value,icon,color){ return `<div class="bg-white p-3 sm:p-4 rounded-lg shadow-md border-l-4 border-blue-400 hover:shadow-lg transition-shadow"><div class="flex items-center justify-between"><div><p class="text-gray-600 text-xs sm:text-sm font-medium">${label}</p><p class="text-lg sm:text-2xl font-bold text-gray-800 mt-1">${value}</p></div><div class="icon-lg ${color} flex-shrink-0">${icons[icon]}</div></div></div>`; }
 function createMatches(){ return `<div class="space-y-4 sm:space-y-6"><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4">새 경기 추가</h3><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4"><input class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="상대팀" value="${state.newMatch.opponent}" onchange="updateNewMatch('opponent', this.value)"><input class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="경기장" value="${state.newMatch.location}" onchange="updateNewMatch('location', this.value)"><input type="date" class="border rounded-lg px-3 py-2 text-sm sm:text-base" value="${state.newMatch.date}" onchange="updateNewMatch('date', this.value)"><select class="border rounded-lg px-3 py-2 text-sm sm:text-base" value="${state.newMatch.result}" onchange="updateNewMatch('result', this.value)"><option value="">결과 선택</option><option value="W">승리</option><option value="D">무승부</option><option value="L">패배</option></select><input type="number" class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="팀 득점" value="${state.newMatch.goals}" onchange="updateNewMatch('goals', parseInt(this.value)||0)"><input type="number" class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="팀 실점" value="${state.newMatch.conceded}" onchange="updateNewMatch('conceded', parseInt(this.value)||0)"><input class="border rounded-lg px-3 py-2 text-sm sm:text-base lg:col-span-3" placeholder="득점자 (쉼표로 구분)" value="${state.newMatch.scorers}" onchange="updateNewMatch('scorers', this.value)"></div><button onclick="addMatch()" class="mt-3 sm:mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center text-sm sm:text-base">${icons.plus}<span class="ml-1">경기 추가</span></button></div><div class="bg-white rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold p-4 sm:p-6 border-b">경기 기록</h3><div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-50"><tr><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">날짜</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상대팀</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">장소</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">결과</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">스코어</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">득점자</th></tr></thead><tbody class="divide-y divide-gray-200">${state.matches.map(m=>`<tr class="hover:bg-gray-50"><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">${m.date}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">${m.opponent}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500 hidden sm:table-cell">${m.location}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap"><span class="px-2 py-1 text-xs rounded-full ${m.result==='W'?'bg-green-100 text-green-800':m.result==='L'?'bg-red-100 text-red-800':'bg-yellow-100 text-yellow-800'}">${m.result==='W'?'승':m.result==='L'?'패':'무'}</span></td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm font-medium">${m.score}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-600">${m.scorers}</td></tr>`).join('')}</tbody></table></div></div>`; }
 function createFormation(){ const present = getPresentPlayers(); const total = Object.values(state.formation).flat().filter(Boolean).length; const savedQuarters = getSavedQuartersCount(); return `<div class="space-y-4 sm:space-y-6"><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div class="flex items-center gap-2"><span class="text-sm text-gray-600 font-medium">현재 쿼터</span>${[1,2,3,4].map(n=>`<button onclick="setCurrentQuarter(${n})" class="px-3 py-2 rounded-lg text-sm font-medium transition-all relative ${state.currentQuarter===n?'bg-blue-600 text-white shadow-md':'bg-gray-100 hover:bg-gray-200'}">${n}${state.quarters[n-1] ? '<span class="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full"></span>' : ''}</button>`).join('')}</div><div class="text-sm text-gray-600"><span class="font-medium">저장된 쿼터: <span class="text-blue-600">${savedQuarters}/4</span></span></div></div><div class="mt-3 flex items-center justify-between text-sm"><span class="text-gray-600">📊 출석: <span class="font-semibold text-blue-600">${present.length}명</span> | 배치: <span class="font-semibold ${total===11?'text-green-600':total>11?'text-red-600':'text-orange-600'}">${total}/11명</span></span>${state.saveStatus?`<span class="text-green-600 font-medium">${state.saveStatus}</span>`:''}</div></div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.users}<span class="ml-2">출석 인원</span></h3><div class="flex flex-wrap gap-2">${present.map(p=>{ const placed = Object.values(state.formation).flat().some(x=>x && x.id===p.id); const played = quartersPlayedCount(p.id); return `<div class="player-chip no-select ${placed?'bg-gray-200 text-gray-600':'bg-blue-100 text-blue-800 hover:bg-blue-200'} px-3 py-2 rounded-full text-sm font-medium ${placed?'cursor-not-allowed':'cursor-move'} transition-all" ${!placed?'draggable="true" ondragstart="handleDragStart(event, '+p.id+')" ondragend="handleDragEnd(event)"':''} style="touch-action:none;"><span class="mr-1">${p.name}</span><span class="text-xs opacity-75">(${p.position})</span><span class="ml-1 text-xs px-1 py-0.5 rounded ${played >= 2 ? 'bg-green-200 text-green-800' : played >= 1 ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-200 text-gray-600'}">${played}/4</span>${placed?'<span class="ml-1 text-xs">✓</span>':''}</div>`; }).join('')}</div>${present.length===0?'<p class="text-gray-500 text-sm mt-2 text-center py-4 bg-gray-50 rounded-lg">💡 선수 관리 탭에서 출석 체크 후 여기서 배치하세요</p>':''}</div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.target}<span class="ml-2">포메이션 - ${state.currentQuarter}쿼터</span></h3><div class="pitch"><div class="half-line"></div><div class="center-circle"></div><div class="center-dot"></div><div class="box top"></div><div class="box bottom"></div><div class="relative h-full flex flex-col justify-between py-8 sm:py-16">${rowOrder.map(pos => createPositionRow(pos)).join('')}</div></div><div class="mt-4 text-center"><span class="text-sm font-medium ${total===11?'text-green-600': total>11?'text-red-600':'text-gray-700'}">🏟️ 필드 선수: ${total}/11명 ${total>11?' ⚠️ 인원 초과!':''} ${total===11?' ✅ 완료':''}</span></div><div class="mt-4 flex flex-col sm:flex-row justify-center items-center gap-3"><button onclick="saveCurrentFormation()" class="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm flex items-center hover:bg-blue-700 transition-all hover:scale-105 ${total < 11 ? 'opacity-75' : ''}">${icons.save}<span class="ml-2">포메이션 저장</span></button><button onclick="clearFormation()" class="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 text-sm transition-all hover:scale-105">${icons.trash}<span class="ml-2">포메이션 초기화</span></button></div></div>${total < 11 ? '<div class="text-center mt-2 text-xs text-orange-600">💡 11명을 모두 배치한 후 저장하세요</div>' : ''}</div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-4 flex items-center justify-between"><span class="flex items-center">${icons.calendar}<span class="ml-2">쿼터 미리보기</span></span><span class="text-sm font-normal text-gray-600">저장됨: ${savedQuarters}/4</span></h3><div class="space-y-4">${[1,2,3,4].map(n => createQuarterPreview(n)).join('')}</div></div></div>`; }
-function createPositionRow(position){ const slots = state.formation[position]; const labels = positionLabels[position] || []; const color = position==='gk'?'bg-purple-500':position==='def'?'bg-green-500':position==='dmf'?'bg-teal-500':position==='cmf'?'bg-blue-500':position==='amf'?'bg-orange-500':'bg-red-500'; return `<div class="row-grid cols-${slots.length} px-4">${slots.map((player,idx)=>`<div class="cell drop-slot" data-position="${position}" data-slot-index="${idx}" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${position}', ${idx})" onclick="openPicker('${position}', ${idx})">${player?`<div class="relative"><div class="w-14 h-14 sm:w-16 sm:h-16 ${color} rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-bold shadow-lg player-chip-field no-select" title="클릭하여 제거 또는 교체" onclick="removePlayerFromSlot('${position}', ${idx}, event)" ontouchstart="onChipTouchStart('${position}', ${idx}, event)" ontouchend="onChipTouchEnd()"><span class="text-center leading-tight px-1">${player.name}</span></div></div>` : `<div class="w-14 h-14 sm:w-16 sm:h-16 empty-slot rounded-full flex items-center justify-center text-white/60 text-xs cursor-pointer"><span class="text-center">+</span></div>`}<div class="text-white/90 text-xs font-medium mt-1">${labels[idx]||''}</div></div>`).join('')}</div>`; }
-function createQuarterPreview(n){ const q = state.quarters[n-1]; const title = `${n}쿼터`; const playerCount = q ? Object.values(q).flat().filter(Boolean).length : 0; return `<div class="border-2 rounded-lg p-4 ${q ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}"><div class="flex items-center justify-between mb-3"><div class="flex items-center gap-2"><span class="font-semibold text-sm">${title}</span><span class="text-xs px-2 py-1 rounded-full ${q ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}">${q ? `${playerCount}/11명` : '비어있음'}</span></div><div class="flex items-center gap-2"><button class="text-xs px-3 py-1 rounded-lg transition-all ${q?'bg-blue-600 text-white hover:bg-blue-700':'bg-gray-100 text-gray-500 cursor-not-allowed'}" ${q?`onclick="loadQuarter(${n})"`:'disabled'}>${q?'불러오기기':'비어있음'}</button><button class="text-xs px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center transition-all" onclick="clearQuarter(${n})">${icons.trash}</button></div></div><div class="mini-pitch relative"><div class="half-line"></div><div class="box top"></div><div class="box bottom"></div>${miniRows(q)}</div></div>`; }
+function createPositionRow(position){ const slots = state.formation[position]; const labels = positionLabels[position] || []; const color = position==='gk'?'bg-purple-500':position==='def'?'bg-green-500':position==='dmf'?'bg-teal-500':position==='cmf'?'bg-blue-500':position==='amf'?'bg-orange-500':'bg-red-500'; return `<div class="row-grid cols-${slots.length} px-4">${slots.map((player,idx)=>`<div class="cell drop-slot" data-position="${position}" data-slot-index="${idx}" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${position}', ${idx})" onclick="openPicker('${position}', ${idx})">${player?`<div class="relative"><div class="w-14 h-14 sm:w-16 sm:h-16 ${color} rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-bold shadow-lg player-chip-field no-select" title="클릭하여 제거 또는 교체" onclick="removePlayerFromSlot('${position}', ${idx}, event)" ontouchstart="openPicker('${position}', ${idx}')"><span class="text-center leading-tight px-1">${player.name}</span></div></div>` : `<div class="w-14 h-14 sm:w-16 sm:h-16 empty-slot rounded-full flex items-center justify-center text-white/60 text-xs cursor-pointer"><span class="text-center">+</span></div>`}<div class="text-white/90 text-xs font-medium mt-1">${labels[idx]||''}</div></div>`).join('')}</div>`; }
+function createQuarterPreview(n){ const q = state.quarters[n-1]; const title = `${n}쿼터`; const playerCount = q ? Object.values(q).flat().filter(Boolean).length : 0; return `<div class="border-2 rounded-lg p-4 ${q ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}"><div class="flex items-center justify-between mb-3"><div class="flex items-center gap-2"><span class="font-semibold text-sm">${title}</span><span class="text-xs px-2 py-1 rounded-full ${q ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}">${q ? `${playerCount}/11명` : '비어있음'}</span></div><div class="flex items-center gap-2"><button class="text-xs px-3 py-1 rounded-lg transition-all ${q?'bg-blue-600 text-white hover:bg-blue-700':'bg-gray-100 text-gray-500 cursor-not-allowed'}" ${q?`onclick="loadQuarter(${n})"`:'disabled'}>${q?'불러오기':'비어있음'}</button><button class="text-xs px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center transition-all" onclick="clearQuarter(${n})">${icons.trash}</button></div></div><div class="mini-pitch relative"><div class="half-line"></div><div class="box top"></div><div class="box bottom"></div>${miniRows(q)}</div></div>`; }
 function miniRows(q){ if (!q) return ''; const positions = ['fw', 'amf', 'cmf', 'dmf', 'def', 'gk']; const yPerc = [8, 24, 40, 56, 72, 88]; return positions.map((pos,i)=>{ const arr = q[pos] || []; const playersInPosition = arr.filter(p => p !== null); if (playersInPosition.length === 0) return ''; const cols = playersInPosition.length; const left = 8, right = 8; const rowStyle = `top:${yPerc[i]}%; left:${left}px; right:${right}px; grid-template-columns: repeat(${cols},1fr); gap: 4px;`; const gkColor = pos === 'gk' ? 'bg-purple-600' : 'bg-blue-600'; return `<div class="mini-row" style="${rowStyle}">${playersInPosition.map(p=> `<div class="mini-badge ${gkColor}" style="font-size: ${cols > 3 ? '9px' : '10px'};">${p.name}</div>`).join('')}</div>`; }).join(''); }
 function createBottomSheet(){ if(!state.ui.pickerOpen) return ''; const pos = state.ui.pickerPos, idx = state.ui.pickerSlot; const inSlot = state.formation[pos][idx]; const assignedIds = new Set(Object.values(state.formation).flat().filter(Boolean).map(p=>p.id)); const q = state.ui.pickerSearch.trim().toLowerCase(); const candidates = state.players.filter(p=>p.isPresent).filter(p=> !assignedIds.has(p.id) || (inSlot && p.id===inSlot.id)).filter(p=> p.name.toLowerCase().includes(q)); return `<div class="fixed inset-0 z-50"><div class="absolute inset-0 bg-black/30" onclick="closePicker()"></div><div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl p-4 pt-3"><div class="flex items-center justify-between mb-3"><div class="text-sm text-gray-600 font-medium">슬롯: <span class="text-blue-600 font-bold">${pos.toUpperCase()} ${idx+1}</span></div><button class="text-gray-500 text-sm hover:text-gray-700" onclick="closePicker()">✕ 닫기</button></div><div class="flex items-center gap-2 mb-4"><input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="이름 검색..." value="${state.ui.pickerSearch}" oninput="setState({ ui:{...state.ui, pickerSearch:this.value} })">${inSlot?`<button class="px-3 py-2 text-xs rounded-lg bg-red-100 hover:bg-red-200 text-red-700" onclick="unassignSlot('${pos}', ${idx}, event)">제거</button>`:''}</div><div class="max-h-[50vh] overflow-auto grid grid-cols-1 gap-2">${candidates.map(p=>`<button class="p-3 rounded-lg border text-left hover:bg-blue-50 hover:border-blue-200 transition-all" onclick="assignToSlot(${p.id})"><div class="flex items-center justify-between"><div class="flex items-center gap-2"><span class="text-sm font-medium">${p.name}</span><span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">${p.position}</span></div><span class="text-xs text-gray-500">쿼터: ${quartersPlayedCount(p.id)}/4</span></div></div></button>`).join('')}${candidates.length===0?`<div class="text-center text-sm text-gray-500 py-8 bg-gray-50 rounded-lg">😔 선택할 수 있는 선수가 없습니다</div>`:''}</div></div></div>`; }
 function createMembers(){ const q = state.playerSearch.trim().toLowerCase(); const list = q ? state.players.filter(p=>p.name.toLowerCase().includes(q)) : state.players; return `<div class="space-y-4 sm:space-y-6"><div class="bg-blue-50 border border-blue-200 p-4 rounded-lg"><h3 class="text-base sm:text-lg font-semibold mb-2 flex items-center">${icons.users}<span class="ml-2">구성원 관리 안내</span></h3><p class="text-sm text-gray-700">구성원 명단은 Google Sheets의 <span class="font-semibold">'Members'</span> 시트에서 직접 관리합니다. 아래 목록은 시트에서 불러온 내용입니다.</p></div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2"><h3 class="text-base sm:text-lg font-semibold flex items-center">${icons.users}<span class="ml-2">출석 체크</span></h3><div class="flex items-center gap-4"><div class="text-sm text-gray-600">📊 출석: <span class="font-semibold text-blue-600">${state.players.filter(p=>p.isPresent).length}명</span></div><button onclick="clearAllAttendance()" class="text-red-500 hover:text-red-700 text-sm font-medium">전체 해제</button></div></div><div class="sm:ml-auto w-full sm:w-64 mb-4"><input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="선수 이름 검색..." value="${state.playerSearch}" oninput="setState({playerSearch:this.value})"></div><div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">${list.map(p=>`<button onclick="toggleAttendance(${p.id})" class="p-3 rounded-lg border-2 text-left transition-all hover:scale-105 ${p.isPresent?'bg-green-50 border-green-300 text-green-800 shadow-md':'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'}"><div class="flex items-center justify-between mb-1"><span class="font-medium text-sm">${p.name}</span><span class="text-xs px-2 py-1 rounded-full ${p.isPresent?'bg-green-100':'bg-gray-100'}">${p.position}</span></div>${p.isPresent?'<div class="text-xs text-green-600 mt-1 font-medium">✅ 출석</div>':''}</button>`).join('')}</div></div></div>`; }
@@ -472,15 +423,15 @@ function saveData(){ autosave(); setState({saveStatus:"💾 데이터가 저장�
 function downloadBackup(){ const data = { players: state.players, matches: state.matches, formation: state.formation, quarters: state.quarters, currentQuarter: state.currentQuarter, exportedAt: new Date().toISOString(), version:"1.1" }; const blob = new Blob([JSON.stringify(data,null,2)], {type:"application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `hwarang-backup-${new Date().toISOString().slice(0,10)}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); setState({saveStatus:"📥 백업 파일이 다운로드되었습니다"}); setTimeout(()=>setState({saveStatus:""}),2000); }
 let toastTimer=null;
 function toast(msg){ setState({saveStatus:msg}); if(toastTimer) clearTimeout(tostrTimer); toastTimer=setTimeout(()=>setState({saveStatus:""}), 2000); }
-document.addEventListener('DOMContentLoaded', ()=>{
-  console.log("DEBUG: DOM 로드 완료. 초기 렌더링� 시작.");
+
+document.addEventListener('DOMContentLoaded', async ()=>{
+  console.log("DEBUG: DOM 로드 완료. 초기 렌더링 시작.");
+  await loadLocalMembersJson(); // 로컬 JSON 멤버 목록을 먼저 로드
   loadLocalData();
   render();
 });
 </script>
-<!-- 👇� NEW SCRIPT TAGS -->
 <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoad()"></script>
-<script async defer src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoad()"></script>
 </body>
 </html>
