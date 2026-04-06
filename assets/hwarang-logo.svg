@@ -1,0 +1,22 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Hwarang FC Logo">
+  <defs>
+    <radialGradient id="gold" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f7e08a"/>
+      <stop offset="100%" stop-color="#b78a2d"/>
+    </radialGradient>
+    <linearGradient id="red" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e53b1f"/>
+      <stop offset="100%" stop-color="#c71f10"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="256" cy="256" r="240" fill="url(#gold)"/>
+  <circle cx="256" cy="256" r="214" fill="#d8c07a"/>
+  <circle cx="256" cy="256" r="176" fill="url(#red)" stroke="#861a0c" stroke-width="8"/>
+
+  <path d="M195 160 L260 160 L225 220 L290 220 L240 292 L308 292 L232 370" fill="none" stroke="#111" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M240 154 L305 154 L270 214 L335 214 L285 286 L353 286 L277 364" fill="none" stroke="#111" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <text x="256" y="96" text-anchor="middle" font-size="46" font-weight="700" fill="#1f1f1f" font-family="Arial, sans-serif">FC.HWARANG</text>
+  <text x="256" y="458" text-anchor="middle" font-size="40" font-weight="700" fill="#1f1f1f" font-family="Arial, sans-serif">2010</text>
+</svg>
