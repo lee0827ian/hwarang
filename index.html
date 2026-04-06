@@ -130,6 +130,7 @@ const API_KEY = 'AIzaSyAxrFMgnW6NUu1zElfmPne5tanl0NEvdc0';
 const CLIENT_ID = '564267897779-cjkimjreiscc6h2iobh30tue15o7aik8.apps.googleusercontent.com'; 
 // 사용자님이 제공해주신 구글 시트 ID
 const SPREADSHEET_ID = '1-uK4oHEAPYCVg7H4_7CXgKfbAqlAfrQeIP188jhmSLg';
+const KAKAO_REST_API_KEY = ''; // REST API Key (없으면 검색 링크 fallback)
 const DISCOVERY_DOCS = ['https://sheets.googleapis.com/$discovery/rest?version=v4'];
 const SCOPES = 'https://www.googleapis.com/auth/spreadsheets'; // 쓰기 권한 스코프
 
@@ -152,6 +153,8 @@ let state = {
   weeklyConfig: {},
   personalRecords: {},
   schedules: [],
+  selectedMonth: new Date().getMonth() + 1,
+  kakaoRestKey: "",
   scheduleInput: `3/28 중산구장(vs 마크) 7-10시
 4/4 원능수질(vs레스) 6-9시
 4/11 충장(vs 나눔) 7-10시
@@ -268,6 +271,33 @@ function parseScheduleInput(text){
 }
 function sortSchedules(list){
   return [...list].sort((a,b)=> new Date(a.dateISO) - new Date(b.dateISO));
+}
+function getKakaoKey(){ return (state.kakaoRestKey || KAKAO_REST_API_KEY || "").trim(); }
+async function geocodeLocation(location){
+  const key = getKakaoKey();
+  if(!key || !location || location === "미정") return null;
+  try{
+    const res = await fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(location)}`, {
+      headers: { Authorization: `KakaoAK ${key}` }
+    });
+    if(!res.ok) return null;
+    const data = await res.json();
+    const doc = data.documents?.[0];
+    if(!doc) return null;
+    return {
+      lat: parseFloat(doc.y),
+      lng: parseFloat(doc.x),
+      placeName: doc.place_name || location,
+      mapUrl: `https://map.kakao.com/link/map/${encodeURIComponent(doc.place_name || location)},${doc.y},${doc.x}`,
+    };
+  }catch(e){
+    console.warn("Kakao geocode 실패", e);
+    return null;
+  }
+}
+function getScheduleMonths(){
+  const months = [...new Set(state.schedules.map(s=>s.month))];
+  return months.length ? months.sort((a,b)=>a-b) : [state.selectedMonth];
 }
 function getUpcomingSchedule(){
   const today = new Date();
@@ -434,6 +464,8 @@ function saveLocalData(){
     weekOffset: state.weekOffset,
     personalRecords: state.personalRecords,
     schedules: state.schedules,
+    selectedMonth: state.selectedMonth,
+    kakaoRestKey: state.kakaoRestKey,
     scheduleInput: state.scheduleInput,
     savedAt: new Date().toISOString()
   };
@@ -451,6 +483,8 @@ function loadLocalData(){
       weekOffset: savedData.weekOffset || 0,
       personalRecords: savedData.personalRecords || {},
       schedules: savedData.schedules || [],
+      selectedMonth: savedData.selectedMonth || state.selectedMonth,
+      kakaoRestKey: savedData.kakaoRestKey || "",
       scheduleInput: savedData.scheduleInput || state.scheduleInput,
     });
   }
@@ -551,15 +585,25 @@ function topScorers(){
 function initSchedulesFromInput(force=false){
   if(state.schedules.length && !force) return;
   const parsed = parseScheduleInput(state.scheduleInput);
-  setState({ schedules: parsed });
+  setState({ schedules: parsed, selectedMonth: parsed[0]?.month || state.selectedMonth });
 }
-function applyScheduleInput(){
+async function applyScheduleInput(){
   const prevMap = Object.fromEntries(state.schedules.map(s=>[s.id, s]));
-  const parsed = parseScheduleInput(state.scheduleInput).map((s)=>({
+  const base = parseScheduleInput(state.scheduleInput).map((s)=>({
     ...s,
     attendees: prevMap[s.id]?.attendees || [],
   }));
-  setState({ schedules: parsed, saveStatus: "✅ 일정이 업데이트되었습니다" });
+  const parsed = [];
+  for(const item of base){
+    const geo = await geocodeLocation(item.location);
+    parsed.push({
+      ...item,
+      lat: geo?.lat ?? null,
+      lng: geo?.lng ?? null,
+      mapUrl: geo?.mapUrl || item.mapUrl,
+    });
+  }
+  setState({ schedules: parsed, selectedMonth: parsed[0]?.month || state.selectedMonth, saveStatus: "✅ 일정이 업데이트되었습니다" });
   saveLocalData();
 }
 function toggleScheduleAttendance(scheduleId, playerId){
@@ -614,9 +658,16 @@ function createNav(){ const tabs = [{id:'dashboard', name:'대시보드', icon:'
 
 function createDashboard(){
   const s = teamStats();
-  const top = topScorers();
-  const upcoming = getUpcomingSchedule();
-  const attendees = upcoming ? state.players.filter(p=>upcoming.attendees.includes(p.id)) : [];
+  const months = getScheduleMonths();
+  const selectedMonth = state.selectedMonth;
+  const filtered = sortSchedules(state.schedules).filter(v=>v.month===selectedMonth);
+  const byDate = filtered.reduce((acc, cur)=>{
+    const key = `${cur.month}/${cur.day}`;
+    if(!acc[key]) acc[key] = [];
+    acc[key].push(cur);
+    return acc;
+  }, {});
+  const days = Object.keys(byDate);
   return `<div class="space-y-4 sm:space-y-6">
     <div class="bg-gradient-to-r from-green-500 to-blue-600 text-white p-4 sm:p-6 rounded-lg">
       <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
@@ -625,18 +676,18 @@ function createDashboard(){
       </div>
       ${state.saveStatus?`<div class="mt-3 text-sm opacity-95 bg-white/15 px-4 py-3 rounded-lg font-medium border border-white/20">${state.saveStatus}</div>`:''}
     </div>
-    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md border-l-4 border-blue-500">
-      <h3 class="font-semibold text-base sm:text-lg mb-3">📌 돌아오는 경기</h3>
-      ${upcoming ? `<div class="space-y-2">
-        <div class="text-sm sm:text-base"><span class="font-semibold">날짜</span>: ${upcoming.month}/${upcoming.day}</div>
-        <div class="text-sm sm:text-base"><span class="font-semibold">시간</span>: ${upcoming.time}</div>
-        <div class="text-sm sm:text-base"><span class="font-semibold">장소</span>: ${upcoming.location} ${upcoming.mapUrl ? `<a href="${upcoming.mapUrl}" target="_blank" class="text-blue-600 underline ml-1">카카오맵</a>` : ''}</div>
-        <div class="text-sm sm:text-base"><span class="font-semibold">상대</span>: ${upcoming.opponent}</div>
-        <div class="text-sm sm:text-base"><span class="font-semibold">참석</span>: ${attendees.length}명 ${attendees.length ? `(${attendees.map(p=>p.name).join(', ')})` : ''}</div>
-      </div>` : `<div class="text-sm text-gray-500">예정된 경기가 없습니다. 일정/참석 탭에서 일정을 등록해주세요.</div>`}
+    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+      <div class="flex items-center justify-between gap-2 mb-3">
+        <h3 class="font-semibold text-lg">2025-26 일정</h3>
+        <button onclick="setState({activeTab:'schedule'})" class="text-sm text-blue-600 underline">일정관리</button>
+      </div>
+      <div class="flex gap-2 overflow-x-auto pb-2">${months.map(m=>`<button onclick="setState({selectedMonth:${m}})" class="px-3 py-1 rounded-full text-sm border ${m===selectedMonth?'bg-blue-600 text-white border-blue-600':'bg-gray-50 text-gray-700 border-gray-200'}">${m}월</button>`).join('')}</div>
+      <div class="space-y-3 mt-3">
+        ${days.map(day=>`<div class="border rounded-lg overflow-hidden"><div class="px-4 py-2 bg-gray-50 font-semibold">${day}</div>${byDate[day].map(sch=>{const attendees = state.players.filter(p=>sch.attendees.includes(p.id)); return `<div class="px-4 py-3 border-t"><div class="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center text-sm"><div class="font-semibold">${sch.time}</div><div class="sm:col-span-2 text-gray-700">${sch.location}</div><div class="font-medium">${sch.opponent}</div><div class="flex gap-2 sm:justify-end"><button onclick="setState({activeTab:'schedule'})" class="px-2 py-1 rounded border text-xs">참석 ${attendees.length}명</button>${sch.mapUrl?`<a href="${sch.mapUrl}" target="_blank" class="px-2 py-1 rounded border text-xs">지도</a>`:''}</div></div></div>`;}).join('')}</div>`).join('')}
+        ${!days.length ? `<div class="text-sm text-gray-500 py-8 text-center">선택된 월 일정이 없습니다.</div>` : ''}
+      </div>
     </div>
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">${statCard("경기수", s.matches, "calendar","text-green-500")}${statCard("승률", s.winRate+"%", "barChart","text-blue-500")}${statCard("득점", s.goalsFor, "target","text-red-500")}${statCard("실점", s.goalsAgainst, "shield","text-purple-500")}</div>
-    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.target}<span class="ml-2">Top 득점자</span></h3>${top.length ? top.map((p,i)=>`<div class="flex items-center justify-between py-2"><div class="flex items-center"><span class="w-6 h-6 sm:w-7 sm:h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold mr-3">${i+1}</span><span class="text-sm sm:text-base font-medium">${p.name}</span><span class="ml-2 text-xs text-gray-500">(${p.position})</span></div><span class="text-sm sm:text-base font-bold text-blue-600">${p.goals}골</span></div>`).join('') : '<div class="text-gray-500 text-sm text-center py-6">득점 기록이 없습니다</div>'}</div>
   </div>`;
 }
 function statCard(label,value,icon,color){ return `<div class="bg-white p-3 sm:p-4 rounded-lg shadow-md border-l-4 border-blue-400 hover:shadow-lg transition-shadow"><div class="flex items-center justify-between"><div><p class="text-gray-600 text-xs sm:text-sm font-medium">${label}</p><p class="text-lg sm:text-2xl font-bold text-gray-800 mt-1">${value}</p></div><div class="icon-lg ${color} flex-shrink-0">${icons[icon]}</div></div></div>`; }
@@ -644,10 +695,15 @@ function createMatches(){
   const isDesktop = window.innerWidth >= 1024;
   const q = state.recordSearch.trim().toLowerCase();
   const players = q ? state.players.filter(p=>p.name.toLowerCase().includes(q)) : state.players;
+  const top = topScorers();
   return `<div class="space-y-4 sm:space-y-6">
     <div class="bg-indigo-50 border border-indigo-200 p-4 rounded-lg">
       <h3 class="font-semibold text-base sm:text-lg mb-1">입력 모드: 모바일 + 데스크톱 병행</h3>
       <p class="text-sm text-gray-700">모바일은 현장 기록(빠른 입력), 데스크톱은 경기/개인 기록(대량 입력)에 최적화했습니다.</p>
+    </div>
+    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+      <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.target}<span class="ml-2">Top 득점자</span></h3>
+      ${top.length ? top.map((p,i)=>`<div class="flex items-center justify-between py-2 border-b last:border-0"><div class="flex items-center"><span class="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold mr-3">${i+1}</span><span class="text-sm sm:text-base font-medium">${p.name}</span><span class="ml-2 text-xs text-gray-500">(${p.position})</span></div><span class="text-sm sm:text-base font-bold text-blue-600">${p.goals}골</span></div>`).join('') : '<div class="text-gray-500 text-sm text-center py-4">득점 기록이 없습니다</div>'}
     </div>
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
       <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4">새 경기 추가</h3>
@@ -680,6 +736,10 @@ function createSchedule(){
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
       <h3 class="text-base sm:text-lg font-semibold mb-2">카톡 일정 붙여넣기</h3>
       <p class="text-xs sm:text-sm text-gray-600 mb-3">예: 4/11 충장(vs 나눔) 7-10시 형식으로 줄바꿈 입력하면 자동 파싱됩니다.</p>
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-3">
+        <input class="border rounded-lg px-3 py-2 text-sm sm:col-span-3" placeholder="Kakao REST API Key (선택)" value="${state.kakaoRestKey}" oninput="setState({kakaoRestKey:this.value})">
+        <button onclick="saveData()" class="border rounded-lg px-3 py-2 text-sm bg-gray-50">키 저장</button>
+      </div>
       <textarea class="w-full border rounded-lg p-3 text-sm min-h-[180px]" oninput="setState({scheduleInput:this.value})">${state.scheduleInput}</textarea>
       <div class="mt-3 flex gap-2">
         <button onclick="applyScheduleInput()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">일정 반영</button>
