@@ -132,6 +132,8 @@ const CLIENT_ID = '564267897779-cjkimjreiscc6h2iobh30tue15o7aik8.apps.googleuser
 const SPREADSHEET_ID = '1-uK4oHEAPYCVg7H4_7CXgKfbAqlAfrQeIP188jhmSLg';
 const KAKAO_REST_API_KEY = ''; // 여기에 Kakao REST API Key를 붙여넣으세요. (없으면 주소 기반 링크만 사용)
 const KAKAO_JS_API_KEY = ''; // 여기에 Kakao JavaScript Key를 붙여넣으세요. (지도 렌더링용)
+const APP_CONFIG = window.APP_CONFIG || {};
+const ADMIN_PASSWORD = APP_CONFIG.ADMIN_PASSWORD || '1234';
 const DISCOVERY_DOCS = ['https://sheets.googleapis.com/$discovery/rest?version=v4'];
 const SCOPES = 'https://www.googleapis.com/auth/spreadsheets'; // 쓰기 권한 스코프
 
@@ -171,9 +173,10 @@ let state = {
   weeklyConfig: {},
   personalRecords: {},
   schedules: [],
+  selectedScheduleId: null,
   selectedMonth: new Date().getMonth() + 1,
   showPastMonths: false,
-  scheduleUnlocked: false,
+  adminUnlocked: false,
   kakaoRestKey: "",
   kakaoJsKey: "",
   scheduleInput: `3/28 중산구장(vs 마크) 7-10시
@@ -371,6 +374,19 @@ function getScheduleMonths(){
   return months.length ? months.sort((a,b)=>a-b) : [state.selectedMonth];
 }
 function getScheduleById(id){ return state.schedules.find(s=>s.id===id) || null; }
+function getDefaultScheduleId(list = state.schedules){
+  if(!list.length) return null;
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const sorted = sortSchedules(list);
+  return (sorted.find(s=>new Date(`${s.dateISO}T00:00:00`) >= today) || sorted[sorted.length-1]).id;
+}
+function getSelectedSchedule(){
+  const selected = getScheduleById(state.selectedScheduleId);
+  if(selected) return selected;
+  const defaultId = getDefaultScheduleId(state.schedules);
+  return defaultId ? getScheduleById(defaultId) : null;
+}
 function geocodeWithKakaoServices(query){
   return new Promise((resolve)=>{
     if(!window.kakao?.maps?.services || !query){ resolve(null); return; }
@@ -606,6 +622,7 @@ function saveLocalData(){
     weekOffset: state.weekOffset,
     personalRecords: state.personalRecords,
     schedules: state.schedules,
+    selectedScheduleId: state.selectedScheduleId,
     selectedMonth: state.selectedMonth,
     showPastMonths: state.showPastMonths,
     kakaoRestKey: state.kakaoRestKey,
@@ -627,6 +644,7 @@ function loadLocalData(){
       weekOffset: savedData.weekOffset || 0,
       personalRecords: savedData.personalRecords || {},
       schedules: savedData.schedules || [],
+      selectedScheduleId: savedData.selectedScheduleId || null,
       selectedMonth: savedData.selectedMonth || state.selectedMonth,
       showPastMonths: savedData.showPastMonths || false,
       kakaoRestKey: savedData.kakaoRestKey || "",
@@ -706,25 +724,29 @@ function copyPreviousWeek(){
   setState({ weeklyConfig, players, saveStatus:'✅ 지난주 설정을 복사했습니다' });
   saveLocalData();
 }
-function requestScheduleAccess(){
-  if(state.scheduleUnlocked) return true;
-  const pw = window.prompt("일정 수정 비밀번호를 입력하세요");
-  if(pw === "1234"){
-    setState({ scheduleUnlocked: true, activeTab: 'schedule' });
-    toast("✅ 일정 수정 권한이 활성화되었습니다");
+function requestAdminAccess(){
+  if(state.adminUnlocked) return true;
+  const pw = window.prompt("관리자 비밀번호를 입력하세요");
+  if(pw === ADMIN_PASSWORD){
+    setState({ adminUnlocked: true, activeTab: 'admin' });
+    toast("✅ 관리자 권한이 활성화되었습니다");
     return true;
   }
   toast("⛔ 비밀번호가 올바르지 않습니다");
   return false;
 }
 function setActiveTab(tab){
-  if(tab === 'schedule'){
-    requestScheduleAccess();
+  if(tab === 'admin'){
+    requestAdminAccess();
     return;
   }
   setState({activeTab:tab});
 }
-function getPresentPlayers(){ return state.players.filter(p=>p.isPresent); }
+function getPresentPlayers(){
+  const selected = getSelectedSchedule();
+  if(!selected) return [];
+  return state.players.filter(p=>selected.attendees.includes(p.id));
+}
 
 // --- MATCH ---
 function updateNewMatch(field,v){ setState({ newMatch:{...state.newMatch,[field]:v} }); }
@@ -748,7 +770,7 @@ function topScorers(){
 function initSchedulesFromInput(force=false){
   if(state.schedules.length && !force) return;
   const parsed = parseScheduleInput(state.scheduleInput);
-  setState({ schedules: parsed, selectedMonth: pickDefaultMonth(parsed) });
+  setState({ schedules: parsed, selectedMonth: pickDefaultMonth(parsed), selectedScheduleId: getDefaultScheduleId(parsed) });
 }
 async function applyScheduleInput(){
   const prevMap = Object.fromEntries(state.schedules.map(s=>[s.id, s]));
@@ -766,7 +788,7 @@ async function applyScheduleInput(){
       mapUrl: geo?.mapUrl || item.mapUrl,
     });
   }
-  setState({ schedules: parsed, selectedMonth: pickDefaultMonth(parsed), saveStatus: "✅ 일정이 업데이트되었습니다" });
+  setState({ schedules: parsed, selectedMonth: pickDefaultMonth(parsed), selectedScheduleId: getDefaultScheduleId(parsed), saveStatus: "✅ 일정이 업데이트되었습니다" });
   saveLocalData();
 }
 function toggleScheduleAttendance(scheduleId, playerId){
@@ -814,10 +836,10 @@ function assignToSlot(playerId){ const {pickerPos:pos, pickerSlot:idx} = state.u
 function unassignSlot(pos, idx, e){ if(e){ e.stopPropagation(); e.preventDefault(); } const formation = {...state.formation}; formation[pos] = [...formation[pos]]; formation[pos][idx]=null; setState({ formation }); }
 
 // --- UI ---
-function createApp(){ return `<div class="min-h-screen bg-gray-50">${createNav()}<main class="max-w-7xl mx-auto py-4 sm:py-6 px-3 sm:px-4 lg:px-8">${state.activeTab==='dashboard'? createDashboard():''}${state.activeTab==='matches'? createMatches():''}${state.activeTab==='schedule'? createSchedule():''}${state.activeTab==='formation'? createFormation():''}${state.activeTab==='members'? createMembers():''}</main>${createBottomSheet()}${createMapModal()}</div>`; }
+function createApp(){ return `<div class="min-h-screen bg-gray-50">${createNav()}<main class="max-w-7xl mx-auto py-4 sm:py-6 px-3 sm:px-4 lg:px-8">${state.activeTab==='dashboard'? createDashboard():''}${state.activeTab==='attendance'? createAttendance():''}${state.activeTab==='matches'? createMatches():''}${state.activeTab==='formation'? createFormation():''}${state.activeTab==='members'? createMembers():''}${state.activeTab==='admin'? createAdmin():''}</main>${createBottomSheet()}${createMapModal()}</div>`; }
 
 // 변경: 'sync' 탭 제거됨
-function createNav(){ const tabs = [{id:'dashboard', name:'대시보드', icon:'barChart'},{id:'schedule', name:'일정/참석', icon:'calendar'},{id:'matches', name:'경기 기록', icon:'target'},{id:'formation', name:'포메이션', icon:'shield'},{id:'members', name:'구성원', icon:'users'}]; return `<nav class="bg-white shadow-sm border-b"><div class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8"><div class="flex space-x-2 sm:space-x-6 overflow-x-auto nav-scroll py-2">${tabs.map(t=>`<button onclick="setActiveTab('${t.id}')" class="py-2 sm:py-3 px-2 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap flex items-center flex-shrink-0 ${state.activeTab===t.id?'border-blue-500 text-blue-600':'border-transparent text-gray-500 hover:text-gray-700'}"><span class="icon-lg mr-1">${icons[t.icon]}</span>${t.name}</button>`).join('')}</div></div></nav>`; }
+function createNav(){ const tabs = [{id:'dashboard', name:'대시보드', icon:'barChart'},{id:'attendance', name:'참석', icon:'calendar'},{id:'formation', name:'포메이션', icon:'shield'},{id:'members', name:'구성원', icon:'users'},{id:'matches', name:'경기 기록', icon:'target'},{id:'admin', name:'관리자', icon:'save'}]; return `<nav class="bg-white shadow-sm border-b"><div class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8"><div class="flex space-x-2 sm:space-x-6 overflow-x-auto nav-scroll py-2">${tabs.map(t=>`<button onclick="setActiveTab('${t.id}')" class="py-2 sm:py-3 px-2 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap flex items-center flex-shrink-0 ${state.activeTab===t.id?'border-blue-500 text-blue-600':'border-transparent text-gray-500 hover:text-gray-700'}"><span class="icon-lg mr-1">${icons[t.icon]}</span>${t.name}</button>`).join('')}</div></div></nav>`; }
 
 function createDashboard(){
   const s = teamStats();
@@ -855,7 +877,7 @@ function createDashboard(){
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
       <div class="flex items-center justify-between gap-2 mb-3">
         <h3 class="font-semibold text-lg">2025-26 일정</h3>
-        <button onclick="requestScheduleAccess()" class="text-sm text-blue-600 underline">일정관리</button>
+        <button onclick="setState({activeTab:'attendance'})" class="text-sm text-blue-600 underline">참석관리</button>
       </div>
       <div class="text-sm text-gray-600 mb-2">오늘 날짜: <span class="font-semibold text-gray-900">${todayLabel}</span></div>
       <div class="flex gap-2 overflow-x-auto pb-2">${months.map(m=>`<button onclick="setState({selectedMonth:${m}})" class="px-3 py-1 rounded-full text-sm border ${m===selectedMonth?'bg-blue-600 text-white border-blue-600':'bg-gray-50 text-gray-700 border-gray-200'}" ${m!==selectedMonth?'disabled title=\"대시보드에서는 현재 월만 표시\"':''}>${m}월</button>`).join('')}</div>
@@ -863,12 +885,12 @@ function createDashboard(){
       <div class="mt-3 border rounded-lg p-3 bg-gray-50">
         <div class="flex items-center justify-between">
           <div class="font-semibold">첫 페이지 카카오 지도 (다가오는 1경기)</div>
-          <button onclick="requestScheduleAccess()" class="text-sm font-semibold text-blue-600 underline">일정 수정</button>
+          <button onclick="requestAdminAccess()" class="text-sm font-semibold text-blue-600 underline">관리자 수정</button>
         </div>
         ${nextUpcoming ? `<div class="text-base sm:text-lg font-semibold text-gray-800 mt-2">${nextUpcoming.month}/${nextUpcoming.day} / ${nextUpcoming.location} / ${nextUpcoming.time}</div><div class="text-sm sm:text-base text-gray-600 mt-1">${nextUpcoming.address || '주소 미지정'}</div><div id="dashboard-kakao-map-canvas" class="w-full h-64 rounded-lg border mt-2"></div>${nextUpcoming.mapUrl ? `<a href="${nextUpcoming.mapUrl}" target="_blank" class="text-blue-600 underline text-sm mt-2 inline-block">카카오맵에서 크게보기</a>`:''}` : `<div class="text-sm text-gray-500 mt-2">다가오는 일정이 없습니다.</div>`}
       </div>
       <div class="space-y-3 mt-3">
-        ${days.map(day=>`<div class="border rounded-lg overflow-hidden"><div class="px-4 py-2 bg-gray-50 font-semibold">${day}</div>${byDate[day].map(sch=>{const attendees = state.players.filter(p=>sch.attendees.includes(p.id)); const isHighlighted = sch.id === nextUpcomingId; return `<div class="px-4 py-3 border-t ${isHighlighted?'bg-yellow-50':'bg-white'}"><div class="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center text-sm"><div class="font-semibold">${sch.time}</div><div class="sm:col-span-2 text-gray-700">${sch.location}<div class="text-xs text-gray-500">${sch.address || '주소 미지정'}</div></div><div class="font-medium">${sch.opponent}</div><div class="flex gap-2 sm:justify-end"><button onclick="requestScheduleAccess()" class="px-2 py-1 rounded border text-xs">참석 ${attendees.length}명</button><button onclick="openMapModal('${sch.id}')" class="px-2 py-1 rounded border text-xs">지도</button></div></div></div>`;}).join('')}</div>`).join('')}
+        ${days.map(day=>`<div class="border rounded-lg overflow-hidden"><div class="px-4 py-2 bg-gray-50 font-semibold">${day}</div>${byDate[day].map(sch=>{const attendees = state.players.filter(p=>sch.attendees.includes(p.id)); const isHighlighted = sch.id === nextUpcomingId; return `<div class="px-4 py-3 border-t ${isHighlighted?'bg-yellow-50':'bg-white'}"><div class="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center text-sm"><div class="font-semibold">${sch.time}</div><div class="sm:col-span-2 text-gray-700">${sch.location}<div class="text-xs text-gray-500">${sch.address || '주소 미지정'}</div></div><div class="font-medium">${sch.opponent}</div><div class="flex gap-2 sm:justify-end"><button onclick="setState({activeTab:'attendance', selectedScheduleId:'${sch.id}'})" class="px-2 py-1 rounded border text-xs">참석 ${attendees.length}명</button><button onclick="openMapModal('${sch.id}')" class="px-2 py-1 rounded border text-xs">지도</button></div></div></div>`;}).join('')}</div>`).join('')}
         ${!days.length ? `<div class="text-sm text-gray-500 py-8 text-center">선택된 월 일정이 없습니다.</div>` : ''}
       </div>
     </div>
@@ -877,49 +899,45 @@ function createDashboard(){
 }
 function statCard(label,value,icon,color){ return `<div class="bg-white p-3 sm:p-4 rounded-lg shadow-md border-l-4 border-blue-400 hover:shadow-lg transition-shadow"><div class="flex items-center justify-between"><div><p class="text-gray-600 text-xs sm:text-sm font-medium">${label}</p><p class="text-lg sm:text-2xl font-bold text-gray-800 mt-1">${value}</p></div><div class="icon-lg ${color} flex-shrink-0">${icons[icon]}</div></div></div>`; }
 function createMatches(){
-  const isDesktop = window.innerWidth >= 1024;
-  const q = state.recordSearch.trim().toLowerCase();
-  const players = q ? state.players.filter(p=>p.name.toLowerCase().includes(q)) : state.players;
   const top = topScorers();
   return `<div class="space-y-4 sm:space-y-6">
-    <div class="bg-indigo-50 border border-indigo-200 p-4 rounded-lg">
-      <h3 class="font-semibold text-base sm:text-lg mb-1">입력 모드: 모바일 + 데스크톱 병행</h3>
-      <p class="text-sm text-gray-700">모바일은 현장 기록(빠른 입력), 데스크톱은 경기/개인 기록(대량 입력)에 최적화했습니다.</p>
-    </div>
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.target}<span class="ml-2">Top 득점자</span></h3>
+      <div class="flex items-center justify-between gap-2 mb-3 sm:mb-4">
+        <h3 class="text-base sm:text-lg font-semibold flex items-center">${icons.target}<span class="ml-2">Top 득점자</span></h3>
+        <button onclick="requestAdminAccess()" class="text-sm text-blue-600 underline">관리자 수정</button>
+      </div>
       ${top.length ? top.map((p,i)=>`<div class="flex items-center justify-between py-2 border-b last:border-0"><div class="flex items-center"><span class="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold mr-3">${i+1}</span><span class="text-sm sm:text-base font-medium">${p.name}</span><span class="ml-2 text-xs text-gray-500">(${p.position})</span></div><span class="text-sm sm:text-base font-bold text-blue-600">${p.goals}골</span></div>`).join('') : '<div class="text-gray-500 text-sm text-center py-4">득점 기록이 없습니다</div>'}
     </div>
-    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4">새 경기 추가</h3>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-        <input class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="상대팀" value="${state.newMatch.opponent}" onchange="updateNewMatch('opponent', this.value)">
-        <input class="border rounded-lg px-3 py-2 w-full text-sm sm:text-base" placeholder="경기장" value="${state.newMatch.location}" onchange="updateNewMatch('location', this.value)">
-        <input type="date" class="border rounded-lg px-3 py-2 text-sm sm:text-base" value="${state.newMatch.date}" onchange="updateNewMatch('date', this.value)">
-        <select class="border rounded-lg px-3 py-2 text-sm sm:text-base" value="${state.newMatch.result}" onchange="updateNewMatch('result', this.value)"><option value="">결과 선택</option><option value="W">승리</option><option value="D">무승부</option><option value="L">패배</option></select>
-        <input type="number" class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="팀 득점" value="${state.newMatch.goals}" onchange="updateNewMatch('goals', parseInt(this.value)||0)">
-        <input type="number" class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="팀 실점" value="${state.newMatch.conceded}" onchange="updateNewMatch('conceded', parseInt(this.value)||0)">
-        <input class="border rounded-lg px-3 py-2 text-sm sm:text-base lg:col-span-3" placeholder="득점자 (쉼표로 구분)" value="${state.newMatch.scorers}" onchange="updateNewMatch('scorers', this.value)">
-      </div>
-      <button onclick="addMatch()" class="mt-3 sm:mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center text-sm sm:text-base">${state.isGapiSignedIn ? icons.plus : icons.shield}<span class="ml-1">${state.isGapiSignedIn ? '경기 추가' : '로그인 필요'}</span></button>
-      ${!state.isGapiSignedIn && state.isGapiLoaded ? `<button onclick="handleAuthClick()" class="ml-3 mt-3 sm:mt-4 bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 text-sm">저장 권한 얻기</button>` : ''}
-    </div>
     <div class="bg-white rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold p-4 sm:p-6 border-b">경기 기록</h3><div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-50"><tr><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">날짜</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상대팀</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">장소</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">결과</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">스코어</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">득점자</th></tr></thead><tbody class="divide-y divide-gray-200">${state.matches.map(m=>`<tr class="hover:bg-gray-50"><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">${m.date}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">${m.opponent}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500 hidden sm:table-cell">${m.location}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap"><span class="px-2 py-1 text-xs rounded-full ${m.result==='W'?'bg-green-100 text-green-800':m.result==='L'?'bg-red-100 text-red-800':'bg-yellow-100 text-yellow-800'}">${m.result==='W'?'승':m.result==='L'?'패':'무'}</span></td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm font-medium">${m.score}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-600">${m.scorers}</td></tr>`).join('')}</tbody></table></div></div>
-    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 mb-4">
-        <h3 class="text-base sm:text-lg font-semibold">개인 기록 ${isDesktop ? '워크스페이스 (데스크톱)' : '요약 (모바일)'}</h3>
-        <input class="border rounded-lg px-3 py-2 text-sm w-full lg:w-64" placeholder="선수 검색" value="${state.recordSearch}" oninput="setState({recordSearch:this.value})">
-      </div>
-      ${isDesktop ? `<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="px-3 py-2 text-left">선수</th><th class="px-3 py-2 text-left">포지션</th><th class="px-3 py-2 text-left">득점</th><th class="px-3 py-2 text-left">도움</th><th class="px-3 py-2 text-left">슈팅</th><th class="px-3 py-2 text-left">태클</th><th class="px-3 py-2 text-left">선방</th><th class="px-3 py-2 text-left">메모</th></tr></thead><tbody class="divide-y">${players.map(p=>{const r=recFor(p.id);return `<tr><td class="px-3 py-2 font-medium">${p.name}</td><td class="px-3 py-2 text-gray-600">${p.position}</td><td class="px-3 py-2"><input type="number" min="0" class="border rounded px-2 py-1 w-16" value="${r.goals}" onchange="updatePersonalRecord(${p.id},'goals',this.value)"></td><td class="px-3 py-2"><input type="number" min="0" class="border rounded px-2 py-1 w-16" value="${r.assists}" onchange="updatePersonalRecord(${p.id},'assists',this.value)"></td><td class="px-3 py-2"><input type="number" min="0" class="border rounded px-2 py-1 w-16" value="${r.shots}" onchange="updatePersonalRecord(${p.id},'shots',this.value)"></td><td class="px-3 py-2"><input type="number" min="0" class="border rounded px-2 py-1 w-16" value="${r.tackles}" onchange="updatePersonalRecord(${p.id},'tackles',this.value)"></td><td class="px-3 py-2"><input type="number" min="0" class="border rounded px-2 py-1 w-16" value="${r.saves}" onchange="updatePersonalRecord(${p.id},'saves',this.value)"></td><td class="px-3 py-2"><input class="border rounded px-2 py-1 w-full" value="${r.note||''}" onchange="updatePersonalRecord(${p.id},'note',this.value)"></td></tr>`}).join('')}</tbody></table></div>` : `<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${players.slice(0,8).map(p=>{const r=recFor(p.id);return `<div class="border rounded-lg p-3"><div class="font-medium">${p.name} <span class="text-xs text-gray-500">(${p.position})</span></div><div class="text-xs text-gray-600 mt-1">득점 ${r.goals} · 도움 ${r.assists} · 슈팅 ${r.shots}</div></div>`}).join('')}</div>`}
-    </div>
   </div>`;
 }
-function createSchedule(){
+function createAttendance(){
+  const schedules = sortSchedules(state.schedules);
+  const selected = getSelectedSchedule();
+  if(!selected && schedules.length){
+    setTimeout(()=>setState({ selectedScheduleId: getDefaultScheduleId(schedules) }), 0);
+  }
+  return `<div class="space-y-4 sm:space-y-6">
+    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+      <div class="flex items-center justify-between gap-2">
+        <h3 class="text-base sm:text-lg font-semibold">참석 체크</h3>
+        <button onclick="setState({activeTab:'formation'})" class="text-sm text-blue-600 underline">포메이션으로</button>
+      </div>
+      <div class="text-xs text-gray-500 mt-1">오늘 기준 가장 가까운 일정이 자동 선택됩니다.</div>
+      <div class="mt-3 flex gap-2 overflow-x-auto pb-2">
+        ${schedules.map(s=>`<button onclick="setState({selectedScheduleId:'${s.id}'})" class="px-3 py-2 rounded-lg border text-sm whitespace-nowrap ${selected?.id===s.id?'bg-blue-600 text-white border-blue-600':'bg-white'}">${s.month}/${s.day} ${s.time}</button>`).join('')}
+      </div>
+      ${selected ? `<div class="mt-3 p-3 rounded-lg border bg-gray-50"><div class="font-semibold">${selected.month}/${selected.day} · ${selected.location}</div><div class="text-xs text-gray-500">${selected.address || '주소 미지정'}</div><div class="text-sm mt-1">상대: ${selected.opponent}</div></div>` : `<div class="mt-3 text-sm text-gray-500">일정을 먼저 등록해주세요.</div>`}
+    </div>
+    ${selected ? `<div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><div class="text-sm text-gray-600 mb-2">참석자 선택 (${selected.attendees.length}명)</div><div class="flex flex-wrap gap-2">${state.players.map(p=>`<button onclick="toggleScheduleAttendance('${selected.id}', ${p.id})" class="px-2 py-1 text-xs rounded-full border ${selected.attendees.includes(p.id) ? 'bg-green-100 border-green-300 text-green-800' : 'bg-gray-50 border-gray-200 text-gray-600'}">${p.name}</button>`).join('')}</div></div>` : ''}
+  </div>`;
+}
+function createAdmin(){
   const schedules = sortSchedules(state.schedules);
   const today = new Date(); today.setHours(0,0,0,0);
   return `<div class="space-y-4 sm:space-y-6">
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <h3 class="text-base sm:text-lg font-semibold mb-2">카톡 일정 붙여넣기</h3>
+      <h3 class="text-base sm:text-lg font-semibold mb-2">관리자: 카톡 일정 붙여넣기</h3>
       <p class="text-xs sm:text-sm text-gray-600 mb-3">예: 4/11 충장(vs 나눔) 7-10시 형식으로 줄바꿈 입력하면 자동 파싱됩니다.</p>
       <p class="text-xs text-gray-500 mb-2">API 키를 코드에 직접 넣으려면 파일 상단의 <code>KAKAO_REST_API_KEY</code>, <code>KAKAO_JS_API_KEY</code> 값에 붙여넣으면 됩니다.</p>
       <div class="grid grid-cols-1 sm:grid-cols-5 gap-2 mb-3">
@@ -948,13 +966,24 @@ function createSchedule(){
             </div>
             <div class="text-sm font-medium ${isPast ? 'text-gray-500' : 'text-blue-700'}">${isPast ? '지난 일정' : '예정 일정'}</div>
           </div>
-          <div class="mt-3">
-            <div class="text-xs text-gray-600 mb-2">참석자 선택 (${attendees.length}명)</div>
-            <div class="flex flex-wrap gap-2">${state.players.map(p=>`<button onclick="toggleScheduleAttendance('${s.id}', ${p.id})" class="px-2 py-1 text-xs rounded-full border ${s.attendees.includes(p.id) ? 'bg-green-100 border-green-300 text-green-800' : 'bg-gray-50 border-gray-200 text-gray-600'}">${p.name}</button>`).join('')}</div>
-          </div>
+          <div class="mt-3 text-xs text-gray-600">참석 인원: ${attendees.length}명 (참석 탭에서 관리)</div>
         </div>`;
       }).join('')}
       ${!schedules.length ? `<div class="text-center py-8 text-sm text-gray-500 bg-white rounded-lg shadow">일정이 없습니다. 위 입력창에서 붙여넣고 반영하세요.</div>` : ''}
+    </div>
+    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+      <h3 class="text-base sm:text-lg font-semibold mb-3">관리자: 경기 결과 등록</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+        <input class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="상대팀" value="${state.newMatch.opponent}" onchange="updateNewMatch('opponent', this.value)">
+        <input class="border rounded-lg px-3 py-2 w-full text-sm sm:text-base" placeholder="경기장" value="${state.newMatch.location}" onchange="updateNewMatch('location', this.value)">
+        <input type="date" class="border rounded-lg px-3 py-2 text-sm sm:text-base" value="${state.newMatch.date}" onchange="updateNewMatch('date', this.value)">
+        <select class="border rounded-lg px-3 py-2 text-sm sm:text-base" value="${state.newMatch.result}" onchange="updateNewMatch('result', this.value)"><option value="">결과 선택</option><option value="W">승리</option><option value="D">무승부</option><option value="L">패배</option></select>
+        <input type="number" class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="팀 득점" value="${state.newMatch.goals}" onchange="updateNewMatch('goals', parseInt(this.value)||0)">
+        <input type="number" class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="팀 실점" value="${state.newMatch.conceded}" onchange="updateNewMatch('conceded', parseInt(this.value)||0)">
+        <input class="border rounded-lg px-3 py-2 text-sm sm:text-base lg:col-span-3" placeholder="득점자 (쉼표로 구분)" value="${state.newMatch.scorers}" onchange="updateNewMatch('scorers', this.value)">
+      </div>
+      <button onclick="addMatch()" class="mt-3 sm:mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center text-sm sm:text-base">${state.isGapiSignedIn ? icons.plus : icons.shield}<span class="ml-1">${state.isGapiSignedIn ? '경기 추가' : '로그인 필요'}</span></button>
+      ${!state.isGapiSignedIn && state.isGapiLoaded ? `<button onclick="handleAuthClick()" class="ml-3 mt-3 sm:mt-4 bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 text-sm">저장 권한 얻기</button>` : ''}
     </div>
   </div>`;
 }
@@ -976,33 +1005,26 @@ function createMapModal(){
     </div>
   </div>`;
 }
-function createFormation(){ const present = getPresentPlayers(); const total = Object.values(state.formation).flat().filter(Boolean).length; const savedQuarters = getSavedQuartersCount(); return `<div class="space-y-4 sm:space-y-6"><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div class="flex items-center gap-2"><span class="text-sm text-gray-600 font-medium">현재 쿼터</span>${[1,2,3,4].map(n=>`<button onclick="setCurrentQuarter(${n})" class="px-3 py-2 rounded-lg text-sm font-medium transition-all relative ${state.currentQuarter===n?'bg-blue-600 text-white shadow-md':'bg-gray-100 hover:bg-gray-200'}">${n}${state.quarters[n-1] ? '<span class="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full"></span>' : ''}</button>`).join('')}</div><div class="text-sm text-gray-600"><span class="font-medium">저장된 쿼터: <span class="text-blue-600">${savedQuarters}/4</span></span></div></div><div class="mt-3 flex items-center justify-between text-sm"><span class="text-gray-600">📊 출석: <span class="font-semibold text-blue-600">${present.length}명</span> | 배치: <span class="font-semibold ${total===11?'text-green-600':total>11?'text-red-600':'text-orange-600'}">${total}/11명</span></span>${state.saveStatus?`<span class="text-green-600 font-medium">${state.saveStatus}</span>`:''}</div></div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.users}<span class="ml-2">출석 인원</span></h3><div class="flex flex-wrap gap-2">${present.map(p=>{ const placed = Object.values(state.formation).flat().some(x=>x && x.id===p.id); const played = quartersPlayedCount(p.id); return `<div class="player-chip no-select ${placed?'bg-gray-200 text-gray-600':'bg-blue-100 text-blue-800 hover:bg-blue-200'} px-3 py-2 rounded-full text-sm font-medium ${placed?'cursor-not-allowed':'cursor-move'} transition-all" ${!placed?'draggable="true" ondragstart="handleDragStart(event, '+p.id+')" ondragend="handleDragEnd(event)"':''} style="touch-action:none;"><span class="mr-1">${p.name}</span><span class="text-xs opacity-75">(${p.position})</span><span class="ml-1 text-xs px-1 py-0.5 rounded ${played >= 2 ? 'bg-green-200 text-green-800' : played >= 1 ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-200 text-gray-600'}">${played}/4</span>${placed?'<span class="ml-1 text-xs">✓</span>':''}</div>`; }).join('')}</div>${present.length===0?'<p class="text-gray-500 text-sm mt-2 text-center py-4 bg-gray-50 rounded-lg">💡 선수 관리 탭에서 출석 체크 후 여기서 배치하세요</p>':''}</div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.target}<span class="ml-2">포메이션 - ${state.currentQuarter}쿼터</span></h3><div class="pitch"><div class="half-line"></div><div class="center-circle"></div><div class="center-dot"></div><div class="box top"></div><div class="box bottom"></div><div class="relative h-full flex flex-col justify-between py-8 sm:py-16">${rowOrder.map(pos => createPositionRow(pos)).join('')}</div></div><div class="mt-4 text-center"><span class="text-sm font-medium ${total===11?'text-green-600': total>11?'text-red-600':'text-gray-700'}">🏟️ 필드 선수: ${total}/11명 ${total>11?' ⚠️ 인원 초과!':''} ${total===11?' ✅ 완료':''}</span></div><div class="mt-4 flex flex-col sm:flex-row justify-center items-center gap-3"><button onclick="saveCurrentFormation()" class="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm flex items-center hover:bg-blue-700 transition-all hover:scale-105 ${total < 11 ? 'opacity-75' : ''}">${icons.save}<span class="ml-2">포메이션 저장</span></button><button onclick="clearFormation()" class="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 text-sm transition-all hover:scale-105">${icons.trash}<span class="ml-2">포메이션 초기화</span></button></div></div>${total < 11 ? '<div class="text-center mt-2 text-xs text-orange-600">💡 11명을 모두 배치한 후 저장하세요</div>' : ''}</div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-4 flex items-center justify-between"><span class="flex items-center">${icons.calendar}<span class="ml-2">쿼터 미리보기</span></span><span class="text-sm font-normal text-gray-600">저장됨: ${savedQuarters}/4</span></h3><div class="space-y-4">${[1,2,3,4].map(n => createQuarterPreview(n)).join('')}</div></div></div>`; }
+function createFormation(){ const present = getPresentPlayers(); const total = Object.values(state.formation).flat().filter(Boolean).length; const savedQuarters = getSavedQuartersCount(); const selected = getSelectedSchedule(); return `<div class="space-y-4 sm:space-y-6"><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div class="flex items-center gap-2"><span class="text-sm text-gray-600 font-medium">현재 쿼터</span>${[1,2,3,4].map(n=>`<button onclick="setCurrentQuarter(${n})" class="px-3 py-2 rounded-lg text-sm font-medium transition-all relative ${state.currentQuarter===n?'bg-blue-600 text-white shadow-md':'bg-gray-100 hover:bg-gray-200'}">${n}${state.quarters[n-1] ? '<span class="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full"></span>' : ''}</button>`).join('')}</div><div class="text-sm text-gray-600"><span class="font-medium">저장된 쿼터: <span class="text-blue-600">${savedQuarters}/4</span></span></div></div><div class="mt-3 flex items-center justify-between text-sm"><span class="text-gray-600">📊 출석: <span class="font-semibold text-blue-600">${present.length}명</span> | 배치: <span class="font-semibold ${total===11?'text-green-600':total>11?'text-red-600':'text-orange-600'}">${total}/11명</span></span>${state.saveStatus?`<span class="text-green-600 font-medium">${state.saveStatus}</span>`:''}</div><div class="text-xs text-gray-500 mt-1">${selected ? `기준 일정: ${selected.month}/${selected.day} ${selected.time} ${selected.location}` : '참석 탭에서 일정을 선택해주세요'}</div></div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.users}<span class="ml-2">출석 인원</span></h3><div class="flex flex-wrap gap-2">${present.map(p=>{ const placed = Object.values(state.formation).flat().some(x=>x && x.id===p.id); const played = quartersPlayedCount(p.id); return `<div class="player-chip no-select ${placed?'bg-gray-200 text-gray-600':'bg-blue-100 text-blue-800 hover:bg-blue-200'} px-3 py-2 rounded-full text-sm font-medium ${placed?'cursor-not-allowed':'cursor-move'} transition-all" ${!placed?'draggable="true" ondragstart="handleDragStart(event, '+p.id+')" ondragend="handleDragEnd(event)"':''} style="touch-action:none;"><span class="mr-1">${p.name}</span><span class="text-xs opacity-75">(${p.position})</span><span class="ml-1 text-xs px-1 py-0.5 rounded ${played >= 2 ? 'bg-green-200 text-green-800' : played >= 1 ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-200 text-gray-600'}">${played}/4</span>${placed?'<span class="ml-1 text-xs">✓</span>':''}</div>`; }).join('')}</div>${present.length===0?'<p class="text-gray-500 text-sm mt-2 text-center py-4 bg-gray-50 rounded-lg">💡 참석 탭에서 참석자를 선택하면 여기서 바로 배치됩니다.</p>':''}</div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.target}<span class="ml-2">포메이션 - ${state.currentQuarter}쿼터</span></h3><div class="pitch"><div class="half-line"></div><div class="center-circle"></div><div class="center-dot"></div><div class="box top"></div><div class="box bottom"></div><div class="relative h-full flex flex-col justify-between py-8 sm:py-16">${rowOrder.map(pos => createPositionRow(pos)).join('')}</div></div><div class="mt-4 text-center"><span class="text-sm font-medium ${total===11?'text-green-600': total>11?'text-red-600':'text-gray-700'}">🏟️ 필드 선수: ${total}/11명 ${total>11?' ⚠️ 인원 초과!':''} ${total===11?' ✅ 완료':''}</span></div><div class="mt-4 flex flex-col sm:flex-row justify-center items-center gap-3"><button onclick="saveCurrentFormation()" class="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm flex items-center hover:bg-blue-700 transition-all hover:scale-105 ${total < 11 ? 'opacity-75' : ''}">${icons.save}<span class="ml-2">포메이션 저장</span></button><button onclick="clearFormation()" class="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 text-sm transition-all hover:scale-105">${icons.trash}<span class="ml-2">포메이션 초기화</span></button></div></div>${total < 11 ? '<div class="text-center mt-2 text-xs text-orange-600">💡 11명을 모두 배치한 후 저장하세요</div>' : ''}</div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-4 flex items-center justify-between"><span class="flex items-center">${icons.calendar}<span class="ml-2">쿼터 미리보기</span></span><span class="text-sm font-normal text-gray-600">저장됨: ${savedQuarters}/4</span></h3><div class="space-y-4">${[1,2,3,4].map(n => createQuarterPreview(n)).join('')}</div></div></div>`; }
 function createPositionRow(position){ const slots = state.formation[position]; const labels = positionLabels[position] || []; const color = position==='gk'?'bg-purple-500':position==='def'?'bg-green-500':position==='dmf'?'bg-teal-500':position==='cmf'?'bg-blue-500':position==='amf'?'bg-orange-500':'bg-red-500'; return `<div class="row-grid cols-${slots.length} px-4">${slots.map((player,idx)=>`<div class="cell drop-slot" data-position="${position}" data-slot-index="${idx}" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${position}', ${idx})" onclick="openPicker('${position}', ${idx})">${player?`<div class="relative"><div class="w-14 h-14 sm:w-16 sm:h-16 ${color} rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-bold shadow-lg player-chip-field no-select" title="클릭하여 제거 또는 교체" onclick="removePlayerFromSlot('${position}', ${idx}, event)" ontouchstart="openPicker('${position}', ${idx}')"><span class="text-center leading-tight px-1">${player.name}</span></div></div>` : `<div class="w-14 h-14 sm:w-16 sm:h-16 empty-slot rounded-full flex items-center justify-center text-white/60 text-xs cursor-pointer"><span class="text-center">+</span></div>`}<div class="text-white/90 text-xs font-medium mt-1">${labels[idx]||''}</div></div>`).join('')}</div>`; }
 function createQuarterPreview(n){ const q = state.quarters[n-1]; const title = `${n}쿼터`; const playerCount = q ? Object.values(q).flat().filter(Boolean).length : 0; return `<div class="border-2 rounded-lg p-4 ${q ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}"><div class="flex items-center justify-between mb-3"><div class="flex items-center gap-2"><span class="font-semibold text-sm">${title}</span><span class="text-xs px-2 py-1 rounded-full ${q ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}">${q ? `${playerCount}/11명` : '비어있음'}</span></div><div class="flex items-center gap-2"><button class="text-xs px-3 py-1 rounded-lg transition-all ${q?'bg-blue-600 text-white hover:bg-blue-700':'bg-gray-100 text-gray-500 cursor-not-allowed'}" ${q?`onclick="loadQuarter(${n})"`:'disabled'}>${q?'불러오기':'비어있음'}</button><button class="text-xs px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center transition-all" onclick="clearQuarter(${n})">${icons.trash}</button></div></div><div class="mini-pitch relative"><div class="half-line"></div><div class="box top"></div><div class="box bottom"></div>${miniRows(q)}</div></div>`; }
 function miniRows(q){ if (!q) return ''; const positions = ['fw', 'amf', 'cmf', 'dmf', 'def', 'gk']; const yPerc = [8, 24, 40, 56, 72, 88]; return positions.map((pos,i)=>{ const arr = q[pos] || []; const playersInPosition = arr.filter(p => p !== null); if (playersInPosition.length === 0) return ''; const cols = playersInPosition.length; const left = 8, right = 8; const rowStyle = `top:${yPerc[i]}%; left:${left}px; right:${right}px; grid-template-columns: repeat(${cols},1fr); gap: 4px;`; const gkColor = pos === 'gk' ? 'bg-purple-600' : 'bg-blue-600'; return `<div class="mini-row" style="${rowStyle}">${playersInPosition.map(p=> `<div class="mini-badge ${gkColor}" style="font-size: ${cols > 3 ? '9px' : '10px'};">${p.name}</div>`).join('')}</div>`; }).join(''); }
-function createBottomSheet(){ if(!state.ui.pickerOpen) return ''; const pos = state.ui.pickerPos, idx = state.ui.pickerSlot; const inSlot = state.formation[pos][idx]; const assignedIds = new Set(Object.values(state.formation).flat().filter(Boolean).map(p=>p.id)); const q = state.ui.pickerSearch.trim().toLowerCase(); const candidates = state.players.filter(p=>p.isPresent).filter(p=> !assignedIds.has(p.id) || (inSlot && p.id===inSlot.id)).filter(p=> p.name.toLowerCase().includes(q)); return `<div class="fixed inset-0 z-50"><div class="absolute inset-0 bg-black/30" onclick="closePicker()"></div><div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl p-4 pt-3"><div class="flex items-center justify-between mb-3"><div class="text-sm text-gray-600 font-medium">슬롯: <span class="text-blue-600 font-bold">${pos.toUpperCase()} ${idx+1}</span></div><button class="text-gray-500 text-sm hover:text-gray-700" onclick="closePicker()">✕ 닫기</button></div><div class="flex items-center gap-2 mb-4"><input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="이름 검색..." value="${state.ui.pickerSearch}" oninput="setState({ ui:{...state.ui, pickerSearch:this.value} })">${inSlot?`<button class="px-3 py-2 text-xs rounded-lg bg-red-100 hover:bg-red-200 text-red-700" onclick="unassignSlot('${pos}', ${idx}, event)">제거</button>`:''}</div><div class="max-h-[50vh] overflow-auto grid grid-cols-1 gap-2">${candidates.map(p=>`<button class="p-3 rounded-lg border text-left hover:bg-blue-50 hover:border-blue-200 transition-all" onclick="assignToSlot(${p.id})"><div class="flex items-center justify-between"><div class="flex items-center gap-2"><span class="text-sm font-medium">${p.name}</span><span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">${p.position}</span></div><span class="text-xs text-gray-500">쿼터: ${quartersPlayedCount(p.id)}/4</span></div></div></button>`).join('')}${candidates.length===0?`<div class="text-center text-sm text-gray-500 py-8 bg-gray-50 rounded-lg">😔 선택할 수 있는 선수가 없습니다</div>`:''}</div></div></div>`; }
+function createBottomSheet(){ if(!state.ui.pickerOpen) return ''; const pos = state.ui.pickerPos, idx = state.ui.pickerSlot; const inSlot = state.formation[pos][idx]; const assignedIds = new Set(Object.values(state.formation).flat().filter(Boolean).map(p=>p.id)); const q = state.ui.pickerSearch.trim().toLowerCase(); const presentIds = new Set(getPresentPlayers().map(p=>p.id)); const candidates = state.players.filter(p=>presentIds.has(p.id)).filter(p=> !assignedIds.has(p.id) || (inSlot && p.id===inSlot.id)).filter(p=> p.name.toLowerCase().includes(q)); return `<div class="fixed inset-0 z-50"><div class="absolute inset-0 bg-black/30" onclick="closePicker()"></div><div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl p-4 pt-3"><div class="flex items-center justify-between mb-3"><div class="text-sm text-gray-600 font-medium">슬롯: <span class="text-blue-600 font-bold">${pos.toUpperCase()} ${idx+1}</span></div><button class="text-gray-500 text-sm hover:text-gray-700" onclick="closePicker()">✕ 닫기</button></div><div class="flex items-center gap-2 mb-4"><input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="이름 검색..." value="${state.ui.pickerSearch}" oninput="setState({ ui:{...state.ui, pickerSearch:this.value} })">${inSlot?`<button class="px-3 py-2 text-xs rounded-lg bg-red-100 hover:bg-red-200 text-red-700" onclick="unassignSlot('${pos}', ${idx}, event)">제거</button>`:''}</div><div class="max-h-[50vh] overflow-auto grid grid-cols-1 gap-2">${candidates.map(p=>`<button class="p-3 rounded-lg border text-left hover:bg-blue-50 hover:border-blue-200 transition-all" onclick="assignToSlot(${p.id})"><div class="flex items-center justify-between"><div class="flex items-center gap-2"><span class="text-sm font-medium">${p.name}</span><span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">${p.position}</span></div><span class="text-xs text-gray-500">쿼터: ${quartersPlayedCount(p.id)}/4</span></div></div></button>`).join('')}${candidates.length===0?`<div class="text-center text-sm text-gray-500 py-8 bg-gray-50 rounded-lg">😔 선택할 수 있는 선수가 없습니다</div>`:''}</div></div></div>`; }
 function createMembers(){
   const q = state.playerSearch.trim().toLowerCase();
   const list = q ? state.players.filter(p=>p.name.toLowerCase().includes(q)) : state.players;
-  const weekLabel = weekRangeLabel(state.weekOffset);
   return `<div class="space-y-4 sm:space-y-6">
     <div class="bg-blue-50 border border-blue-200 p-4 rounded-lg">
-      <h3 class="text-base sm:text-lg font-semibold mb-2 flex items-center">${icons.calendar}<span class="ml-2">이번주 참석/포지션 설정</span></h3>
-      <div class="flex flex-wrap items-center gap-2 text-sm">
-        <button onclick="shiftWeek(-1)" class="px-3 py-1 rounded bg-white border">← 이전주</button>
-        <span class="font-semibold text-blue-700">${weekLabel}</span>
-        <button onclick="shiftWeek(1)" class="px-3 py-1 rounded bg-white border">다음주 →</button>
-        <button onclick="copyPreviousWeek()" class="px-3 py-1 rounded bg-blue-600 text-white">지난주 복사</button>
-      </div>
-      <p class="text-xs text-gray-600 mt-2">주차별로 참석 여부와 기본 포지션을 저장합니다. 기록/포메이션 탭에서 즉시 반영됩니다.</p>
+      <h3 class="text-base sm:text-lg font-semibold mb-2 flex items-center">${icons.users}<span class="ml-2">구성원/포지션 관리</span></h3>
+      <p class="text-xs text-gray-600 mt-2">출석 관리는 참석 탭에서 경기 일정별로 진행합니다. 이 탭은 이름과 기본 포지션만 관리합니다.</p>
     </div>
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
-        <h3 class="text-base sm:text-lg font-semibold flex items-center">${icons.users}<span class="ml-2">출석 체크 + 포지션</span></h3>
-        <div class="flex items-center gap-4"><div class="text-sm text-gray-600">📊 출석: <span class="font-semibold text-blue-600">${state.players.filter(p=>p.isPresent).length}명</span></div><button onclick="clearAllAttendance()" class="text-red-500 hover:text-red-700 text-sm font-medium">전체 해제</button></div>
+        <h3 class="text-base sm:text-lg font-semibold flex items-center">${icons.users}<span class="ml-2">선수 포지션</span></h3>
+        <div class="text-sm text-gray-600">총 인원: <span class="font-semibold text-blue-600">${state.players.length}명</span></div>
       </div>
       <div class="sm:ml-auto w-full sm:w-64 mb-4"><input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="선수 이름 검색..." value="${state.playerSearch}" oninput="setState({playerSearch:this.value})"></div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">${list.map(p=>`<div class="p-3 rounded-lg border-2 ${p.isPresent?'bg-green-50 border-green-300':'bg-gray-50 border-gray-200'}"><div class="flex items-center justify-between gap-2"><button onclick="toggleAttendance(${p.id})" class="text-left flex-1"><span class="font-medium text-sm">${p.name}</span><div class="text-xs mt-1 ${p.isPresent?'text-green-700':'text-gray-500'}">${p.isPresent?'✅ 참석':'미참석'}</div></button><select class="border rounded px-2 py-1 text-xs" onchange="updatePlayerPosition(${p.id}, this.value)">${['GK','DF','MF','FW'].map(pos=>`<option value="${pos}" ${p.position===pos?'selected':''}>${pos}</option>`).join('')}</select></div></div>`).join('')}</div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">${list.map(p=>`<div class="p-3 rounded-lg border-2 bg-gray-50 border-gray-200"><div class="flex items-center justify-between gap-2"><div class="text-left flex-1"><span class="font-medium text-sm">${p.name}</span></div><select class="border rounded px-2 py-1 text-xs" onchange="updatePlayerPosition(${p.id}, this.value)">${['GK','DF','MF','FW'].map(pos=>`<option value="${pos}" ${p.position===pos?'selected':''}>${pos}</option>`).join('')}</select></div></div>`).join('')}</div>
     </div>
   </div>`;
 }
