@@ -154,7 +154,9 @@ let state = {
   personalRecords: {},
   schedules: [],
   selectedMonth: new Date().getMonth() + 1,
+  showPastMonths: false,
   kakaoRestKey: "",
+  kakaoJsKey: "",
   scheduleInput: `3/28 중산구장(vs 마크) 7-10시
 4/4 원능수질(vs레스) 6-9시
 4/11 충장(vs 나눔) 7-10시
@@ -165,7 +167,7 @@ let state = {
 5/16 미정
 5/23 미정
 5/30 둔치(상대팀 확정) 7-10시`,
-  ui: { pickerOpen:false, pickerPos:null, pickerSlot:null, pickerSearch:"" },
+  ui: { pickerOpen:false, pickerPos:null, pickerSlot:null, pickerSearch:"", mapOpen:false, mapScheduleId:null },
   isGapiLoaded: false,
   isGapiSignedIn: false, // 쓰기 권한이 있는 관리자 로그인 여부
 };
@@ -273,6 +275,31 @@ function sortSchedules(list){
   return [...list].sort((a,b)=> new Date(a.dateISO) - new Date(b.dateISO));
 }
 function getKakaoKey(){ return (state.kakaoRestKey || KAKAO_REST_API_KEY || "").trim(); }
+function getKakaoJsKey(){ return (state.kakaoJsKey || "").trim(); }
+function ensureKakaoSdkLoaded(){
+  return new Promise((resolve, reject)=>{
+    if(window.kakao?.maps){ resolve(true); return; }
+    const key = getKakaoJsKey();
+    if(!key){ reject(new Error("카카오 JavaScript 키가 필요합니다")); return; }
+    const id = "kakao-map-sdk";
+    if(document.getElementById(id)){
+      const wait = setInterval(()=>{
+        if(window.kakao?.maps){
+          clearInterval(wait);
+          resolve(true);
+        }
+      }, 100);
+      setTimeout(()=>{ clearInterval(wait); reject(new Error("카카오 SDK 로드 타임아웃")); }, 5000);
+      return;
+    }
+    const script = document.createElement("script");
+    script.id = id;
+    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${key}&autoload=false`;
+    script.onload = ()=>window.kakao.maps.load(()=>resolve(true));
+    script.onerror = ()=>reject(new Error("카카오 SDK 로드 실패"));
+    document.head.appendChild(script);
+  });
+}
 async function geocodeLocation(location){
   const key = getKakaoKey();
   if(!key || !location || location === "미정") return null;
@@ -298,6 +325,32 @@ async function geocodeLocation(location){
 function getScheduleMonths(){
   const months = [...new Set(state.schedules.map(s=>s.month))];
   return months.length ? months.sort((a,b)=>a-b) : [state.selectedMonth];
+}
+function getScheduleById(id){ return state.schedules.find(s=>s.id===id) || null; }
+async function openMapModal(scheduleId){
+  const schedule = getScheduleById(scheduleId);
+  if(!schedule) return;
+  setState({ ui:{...state.ui, mapOpen:true, mapScheduleId:scheduleId }});
+  await new Promise(r=>setTimeout(r, 0));
+  const container = document.getElementById('kakao-map-canvas');
+  if(!container) return;
+  try{
+    await ensureKakaoSdkLoaded();
+    const lat = schedule.lat || 37.5665;
+    const lng = schedule.lng || 126.9780;
+    const map = new kakao.maps.Map(container, {
+      center: new kakao.maps.LatLng(lat, lng),
+      level: 4
+    });
+    const marker = new kakao.maps.Marker({ position: new kakao.maps.LatLng(lat, lng) });
+    marker.setMap(map);
+  }catch(err){
+    console.error(err);
+    toast("⚠️ 카카오 지도 로드 실패: JavaScript 키/도메인 설정 확인");
+  }
+}
+function closeMapModal(){
+  setState({ ui:{...state.ui, mapOpen:false, mapScheduleId:null }});
 }
 function getUpcomingSchedule(){
   const today = new Date();
@@ -465,7 +518,9 @@ function saveLocalData(){
     personalRecords: state.personalRecords,
     schedules: state.schedules,
     selectedMonth: state.selectedMonth,
+    showPastMonths: state.showPastMonths,
     kakaoRestKey: state.kakaoRestKey,
+    kakaoJsKey: state.kakaoJsKey,
     scheduleInput: state.scheduleInput,
     savedAt: new Date().toISOString()
   };
@@ -484,7 +539,9 @@ function loadLocalData(){
       personalRecords: savedData.personalRecords || {},
       schedules: savedData.schedules || [],
       selectedMonth: savedData.selectedMonth || state.selectedMonth,
+      showPastMonths: savedData.showPastMonths || false,
       kakaoRestKey: savedData.kakaoRestKey || "",
+      kakaoJsKey: savedData.kakaoJsKey || "",
       scheduleInput: savedData.scheduleInput || state.scheduleInput,
     });
   }
@@ -651,16 +708,27 @@ function assignToSlot(playerId){ const {pickerPos:pos, pickerSlot:idx} = state.u
 function unassignSlot(pos, idx, e){ if(e){ e.stopPropagation(); e.preventDefault(); } const formation = {...state.formation}; formation[pos] = [...formation[pos]]; formation[pos][idx]=null; setState({ formation }); }
 
 // --- UI ---
-function createApp(){ return `<div class="min-h-screen bg-gray-50">${createNav()}<main class="max-w-7xl mx-auto py-4 sm:py-6 px-3 sm:px-4 lg:px-8">${state.activeTab==='dashboard'? createDashboard():''}${state.activeTab==='matches'? createMatches():''}${state.activeTab==='schedule'? createSchedule():''}${state.activeTab==='formation'? createFormation():''}${state.activeTab==='members'? createMembers():''}</main>${createBottomSheet()}</div>`; }
+function createApp(){ return `<div class="min-h-screen bg-gray-50">${createNav()}<main class="max-w-7xl mx-auto py-4 sm:py-6 px-3 sm:px-4 lg:px-8">${state.activeTab==='dashboard'? createDashboard():''}${state.activeTab==='matches'? createMatches():''}${state.activeTab==='schedule'? createSchedule():''}${state.activeTab==='formation'? createFormation():''}${state.activeTab==='members'? createMembers():''}</main>${createBottomSheet()}${createMapModal()}</div>`; }
 
 // 변경: 'sync' 탭 제거됨
 function createNav(){ const tabs = [{id:'dashboard', name:'대시보드', icon:'barChart'},{id:'schedule', name:'일정/참석', icon:'calendar'},{id:'matches', name:'경기 기록', icon:'target'},{id:'formation', name:'포메이션', icon:'shield'},{id:'members', name:'구성원', icon:'users'}]; return `<nav class="bg-white shadow-sm border-b"><div class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8"><div class="flex space-x-2 sm:space-x-6 overflow-x-auto nav-scroll py-2">${tabs.map(t=>`<button onclick="setActiveTab('${t.id}')" class="py-2 sm:py-3 px-2 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap flex items-center flex-shrink-0 ${state.activeTab===t.id?'border-blue-500 text-blue-600':'border-transparent text-gray-500 hover:text-gray-700'}"><span class="icon-lg mr-1">${icons[t.icon]}</span>${t.name}</button>`).join('')}</div></div></nav>`; }
 
 function createDashboard(){
   const s = teamStats();
+  const today = new Date();
+  today.setHours(0,0,0,0);
+  const todayLabel = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  const currentMonth = today.getMonth() + 1;
   const months = getScheduleMonths();
-  const selectedMonth = state.selectedMonth;
-  const filtered = sortSchedules(state.schedules).filter(v=>v.month===selectedMonth);
+  const selectedMonth = state.selectedMonth || currentMonth;
+  const filtered = sortSchedules(state.schedules)
+    .filter(v=>v.month===selectedMonth)
+    .filter(v=>{
+      const d = new Date(`${v.dateISO}T00:00:00`);
+      if(selectedMonth < currentMonth) return state.showPastMonths;
+      if(selectedMonth === currentMonth) return d >= today || state.showPastMonths;
+      return true;
+    });
   const byDate = filtered.reduce((acc, cur)=>{
     const key = `${cur.month}/${cur.day}`;
     if(!acc[key]) acc[key] = [];
@@ -681,9 +749,11 @@ function createDashboard(){
         <h3 class="font-semibold text-lg">2025-26 일정</h3>
         <button onclick="setState({activeTab:'schedule'})" class="text-sm text-blue-600 underline">일정관리</button>
       </div>
+      <div class="text-sm text-gray-600 mb-2">오늘 날짜: <span class="font-semibold text-gray-900">${todayLabel}</span></div>
       <div class="flex gap-2 overflow-x-auto pb-2">${months.map(m=>`<button onclick="setState({selectedMonth:${m}})" class="px-3 py-1 rounded-full text-sm border ${m===selectedMonth?'bg-blue-600 text-white border-blue-600':'bg-gray-50 text-gray-700 border-gray-200'}">${m}월</button>`).join('')}</div>
+      <div class="mt-2"><button onclick="setState({showPastMonths:!state.showPastMonths})" class="text-xs px-2 py-1 rounded border bg-gray-50">${state.showPastMonths?'지난 일정 숨기기':'지난 일정 보기'}</button></div>
       <div class="space-y-3 mt-3">
-        ${days.map(day=>`<div class="border rounded-lg overflow-hidden"><div class="px-4 py-2 bg-gray-50 font-semibold">${day}</div>${byDate[day].map(sch=>{const attendees = state.players.filter(p=>sch.attendees.includes(p.id)); return `<div class="px-4 py-3 border-t"><div class="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center text-sm"><div class="font-semibold">${sch.time}</div><div class="sm:col-span-2 text-gray-700">${sch.location}</div><div class="font-medium">${sch.opponent}</div><div class="flex gap-2 sm:justify-end"><button onclick="setState({activeTab:'schedule'})" class="px-2 py-1 rounded border text-xs">참석 ${attendees.length}명</button>${sch.mapUrl?`<a href="${sch.mapUrl}" target="_blank" class="px-2 py-1 rounded border text-xs">지도</a>`:''}</div></div></div>`;}).join('')}</div>`).join('')}
+        ${days.map(day=>`<div class="border rounded-lg overflow-hidden"><div class="px-4 py-2 bg-gray-50 font-semibold">${day}</div>${byDate[day].map(sch=>{const attendees = state.players.filter(p=>sch.attendees.includes(p.id)); const isUpcoming = new Date(`${sch.dateISO}T00:00:00`) >= today; return `<div class="px-4 py-3 border-t ${isUpcoming?'bg-yellow-50':''}"><div class="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center text-sm"><div class="font-semibold">${sch.time}</div><div class="sm:col-span-2 text-gray-700">${sch.location}</div><div class="font-medium">${sch.opponent}</div><div class="flex gap-2 sm:justify-end"><button onclick="setState({activeTab:'schedule'})" class="px-2 py-1 rounded border text-xs">참석 ${attendees.length}명</button><button onclick="openMapModal('${sch.id}')" class="px-2 py-1 rounded border text-xs">지도</button></div></div></div>`;}).join('')}</div>`).join('')}
         ${!days.length ? `<div class="text-sm text-gray-500 py-8 text-center">선택된 월 일정이 없습니다.</div>` : ''}
       </div>
     </div>
@@ -736,8 +806,9 @@ function createSchedule(){
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
       <h3 class="text-base sm:text-lg font-semibold mb-2">카톡 일정 붙여넣기</h3>
       <p class="text-xs sm:text-sm text-gray-600 mb-3">예: 4/11 충장(vs 나눔) 7-10시 형식으로 줄바꿈 입력하면 자동 파싱됩니다.</p>
-      <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-3">
-        <input class="border rounded-lg px-3 py-2 text-sm sm:col-span-3" placeholder="Kakao REST API Key (선택)" value="${state.kakaoRestKey}" oninput="setState({kakaoRestKey:this.value})">
+      <div class="grid grid-cols-1 sm:grid-cols-5 gap-2 mb-3">
+        <input class="border rounded-lg px-3 py-2 text-sm sm:col-span-2" placeholder="Kakao REST API Key (선택)" value="${state.kakaoRestKey}" oninput="setState({kakaoRestKey:this.value})">
+        <input class="border rounded-lg px-3 py-2 text-sm sm:col-span-2" placeholder="Kakao JavaScript Key (지도 표시용)" value="${state.kakaoJsKey}" oninput="setState({kakaoJsKey:this.value})">
         <button onclick="saveData()" class="border rounded-lg px-3 py-2 text-sm bg-gray-50">키 저장</button>
       </div>
       <textarea class="w-full border rounded-lg p-3 text-sm min-h-[180px]" oninput="setState({scheduleInput:this.value})">${state.scheduleInput}</textarea>
@@ -755,7 +826,7 @@ function createSchedule(){
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div>
               <div class="font-semibold">${s.month}/${s.day} · ${s.time}</div>
-              <div class="text-sm text-gray-600">${s.location} ${s.mapUrl ? `<a target="_blank" href="${s.mapUrl}" class="text-blue-600 underline ml-1">카카오맵</a>` : ''}</div>
+              <div class="text-sm text-gray-600">${s.location} <button onclick="openMapModal('${s.id}')" class="text-blue-600 underline ml-1">카카오맵</button></div>
               <div class="text-sm text-gray-600">상대: ${s.opponent}</div>
             </div>
             <div class="text-sm font-medium ${isPast ? 'text-gray-500' : 'text-blue-700'}">${isPast ? '지난 일정' : '예정 일정'}</div>
@@ -767,6 +838,24 @@ function createSchedule(){
         </div>`;
       }).join('')}
       ${!schedules.length ? `<div class="text-center py-8 text-sm text-gray-500 bg-white rounded-lg shadow">일정이 없습니다. 위 입력창에서 붙여넣고 반영하세요.</div>` : ''}
+    </div>
+  </div>`;
+}
+function createMapModal(){
+  if(!state.ui.mapOpen) return '';
+  const schedule = getScheduleById(state.ui.mapScheduleId);
+  if(!schedule) return '';
+  return `<div class="fixed inset-0 z-50">
+    <div class="absolute inset-0 bg-black/40" onclick="closeMapModal()"></div>
+    <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92vw] max-w-2xl bg-white rounded-xl shadow-2xl overflow-hidden">
+      <div class="px-4 py-3 border-b flex items-center justify-between">
+        <div class="font-semibold text-sm sm:text-base">${schedule.location} 지도</div>
+        <button onclick="closeMapModal()" class="text-sm text-gray-500">닫기</button>
+      </div>
+      <div id="kakao-map-canvas" style="width:100%;height:420px;"></div>
+      <div class="px-4 py-3 border-t text-right">
+        ${schedule.mapUrl ? `<a href="${schedule.mapUrl}" target="_blank" class="text-blue-600 underline text-sm">카카오맵 크게보기</a>` : ''}
+      </div>
     </div>
   </div>`;
 }
