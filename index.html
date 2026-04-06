@@ -122,20 +122,24 @@
 <body>
 <div id="root"></div>
 
+<script src="config.local.js"></script>
 <script>
 // --- Google Sheets Configuration ---
-// 경기 기록 읽기 전용 (시트를 '웹에 공개'해야 모든 사람이 볼 수 있습니다.)
-const API_KEY = 'AIzaSyAxrFMgnW6NUu1zElfmPne5tanl0NEvdc0'; 
-// 경기 기록 쓰기 권한을 위한 클라이언트 ID (관리자 로그인에 사용)
-const CLIENT_ID = '564267897779-cjkimjreiscc6h2iobh30tue15o7aik8.apps.googleusercontent.com'; 
-// 사용자님이 제공해주신 구글 시트 ID
-const SPREADSHEET_ID = '1-uK4oHEAPYCVg7H4_7CXgKfbAqlAfrQeIP188jhmSLg';
-const KAKAO_REST_API_KEY = '9ed9356e7ff137d7c475ee8975812d8d'; // 여기에 Kakao REST API Key를 붙여넣으세요. (없으면 주소 기반 링크만 사용)
-const KAKAO_JS_API_KEY = '47eed652b004605d8a8e3e39df268f24'; // 여기에 Kakao JavaScript Key를 붙여넣으세요. (지도 렌더링용)
 const APP_CONFIG = window.APP_CONFIG || {};
+// 경기 기록 읽기 전용 (시트를 '웹에 공개'해야 모든 사람이 볼 수 있습니다.)
+const API_KEY = APP_CONFIG.GOOGLE_API_KEY || ''; 
+// 경기 기록 쓰기 권한을 위한 클라이언트 ID (관리자 로그인에 사용)
+const CLIENT_ID = APP_CONFIG.GOOGLE_CLIENT_ID || ''; 
+// 사용자님이 제공해주신 구글 시트 ID
+const SPREADSHEET_ID = APP_CONFIG.SPREADSHEET_ID || '';
+const KAKAO_REST_API_KEY = APP_CONFIG.KAKAO_REST_API_KEY || ''; // config에서 관리
+const KAKAO_JS_API_KEY = APP_CONFIG.KAKAO_JS_API_KEY || ''; // config에서 관리
 const ADMIN_PASSWORD = APP_CONFIG.ADMIN_PASSWORD || '1234';
 const DISCOVERY_DOCS = ['https://sheets.googleapis.com/$discovery/rest?version=v4'];
 const SCOPES = 'https://www.googleapis.com/auth/spreadsheets'; // 쓰기 권한 스코프
+const FIREBASE_CONFIG = APP_CONFIG.FIREBASE_CONFIG || null;
+const FIREBASE_SYNC_ENABLED = APP_CONFIG.FIREBASE_SYNC_ENABLED !== false;
+const FIREBASE_ATTENDANCE_COLLECTION = APP_CONFIG.FIREBASE_ATTENDANCE_COLLECTION || 'schedule_attendance';
 
 const VENUE_ADDRESS_MAP = {
   '충장근린체육공원': '경기 고양시 덕양구 행주내동 636',
@@ -177,6 +181,8 @@ let state = {
   selectedMonth: new Date().getMonth() + 1,
   showPastMonths: false,
   adminUnlocked: false,
+  cloudSyncEnabled: false,
+  cloudSyncStatus: "",
   kakaoRestKey: "",
   kakaoJsKey: "",
   scheduleInput: `3/28 중산구장(vs 마크) 7-10시
@@ -197,6 +203,8 @@ let state = {
 let tokenClient;
 let gapiInited = false;
 let gisInited = false;
+let firebaseApp = null;
+let firestoreDb = null;
 
 const positionLabels = { gk: ['GK'], def: ['LB','CB','CB','RB'], dmf: ['DMF','DMF'], cmf: ['LM','CM','RM'], amf: ['LW','RW'], fw: ['ST'] };
 const rowOrder = ['fw','amf','cmf','dmf','def','gk'];
@@ -409,6 +417,23 @@ async function resolveScheduleCoords(schedule){
   const resolved = await geocodeWithKakaoServices(query);
   return resolved || { lat: 37.6583, lng: 126.8320 };
 }
+
+function formatScheduleTimeLabel(time){
+  const t = String(time || '').trim();
+  const m = t.match(/^(\d{1,2})-(\d{1,2})시$/);
+  if(!m) return t || '시간 미정';
+  const start = parseInt(m[1], 10);
+  const end = parseInt(m[2], 10);
+  const meridiem = start < 12 ? '오전' : '오후';
+  const displayStart = start > 12 ? start - 12 : start;
+  const displayEnd = end > 12 ? end - 12 : end;
+  return `${meridiem}${displayStart}시~${displayEnd}시`;
+}
+
+function formatScheduleHeadline(schedule){
+  if(!schedule) return '';
+  return `${schedule.month}월 ${schedule.day}일, ${schedule.location}, ${formatScheduleTimeLabel(schedule.time)}`;
+}
 function getNextUpcomingSchedule(){
   const today = new Date();
   today.setHours(0,0,0,0);
@@ -612,6 +637,84 @@ async function addMatchToSheet(matchData) {
   }
 }
 
+
+function hasFirebaseConfig(){
+  return !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId && window.firebase);
+}
+function getAttendanceCollection(){
+  if(!firestoreDb) return null;
+  return firestoreDb.collection(FIREBASE_ATTENDANCE_COLLECTION);
+}
+function mergeSchedulesWithCloudAttendance(baseSchedules, cloudRows){
+  const cloudMap = Object.fromEntries((cloudRows || []).map(row=>[row.id, row]));
+  return (baseSchedules || []).map(s=>{
+    const cloud = cloudMap[s.id];
+    if(!cloud) return s;
+    return { ...s, attendees: Array.isArray(cloud.attendees) ? cloud.attendees : s.attendees };
+  });
+}
+async function loadCloudAttendance(){
+  const col = getAttendanceCollection();
+  if(!col) return [];
+  const snapshot = await col.get();
+  return snapshot.docs.map(doc=>({ id: doc.id, ...doc.data() }));
+}
+async function syncAllSchedulesToCloud(){
+  const col = getAttendanceCollection();
+  if(!col) return;
+  const jobs = state.schedules.map(s=> col.doc(s.id).set({
+    scheduleId: s.id,
+    attendees: s.attendees || [],
+    month: s.month,
+    day: s.day,
+    location: s.location,
+    updatedAt: new Date().toISOString(),
+  }, { merge:true }));
+  await Promise.all(jobs);
+}
+async function syncScheduleAttendanceToCloud(schedule){
+  const col = getAttendanceCollection();
+  if(!col || !schedule) return;
+  await col.doc(schedule.id).set({
+    scheduleId: schedule.id,
+    attendees: schedule.attendees || [],
+    month: schedule.month,
+    day: schedule.day,
+    location: schedule.location,
+    updatedAt: new Date().toISOString(),
+  }, { merge:true });
+}
+async function initFirebaseSync(){
+  if(!FIREBASE_SYNC_ENABLED){
+    setState({ cloudSyncStatus: 'Firebase 동기화 비활성화' });
+    return;
+  }
+  if(!hasFirebaseConfig()){
+    setState({ cloudSyncStatus: 'Firebase 설정이 없어 로컬 저장만 사용 중' });
+    return;
+  }
+  try{
+    if(!firebase.apps.length){
+      firebaseApp = firebase.initializeApp(FIREBASE_CONFIG);
+    } else {
+      firebaseApp = firebase.app();
+    }
+    firestoreDb = firebase.firestore();
+
+    const cloudRows = await loadCloudAttendance();
+    if(cloudRows.length){
+      const merged = mergeSchedulesWithCloudAttendance(state.schedules, cloudRows);
+      setState({ schedules: merged, cloudSyncEnabled: true, cloudSyncStatus: `Firebase 동기화 연결됨 (${FIREBASE_CONFIG.projectId})` });
+      saveLocalData();
+    } else {
+      await syncAllSchedulesToCloud();
+      setState({ cloudSyncEnabled: true, cloudSyncStatus: `Firebase 동기화 시작됨 (${FIREBASE_CONFIG.projectId})` });
+    }
+  } catch(err){
+    console.error('Firebase 동기화 초기화 실패', err);
+    setState({ cloudSyncStatus: 'Firebase 동기화 실패 - 로컬 모드로 동작' });
+  }
+}
 // --- LOCAL STORAGE (for formation/quarters) ---
 function saveLocalData(){
   const data = {
@@ -790,6 +893,9 @@ async function applyScheduleInput(){
   }
   setState({ schedules: parsed, selectedMonth: pickDefaultMonth(parsed), selectedScheduleId: getDefaultScheduleId(parsed), saveStatus: "✅ 일정이 업데이트되었습니다" });
   saveLocalData();
+  if(state.cloudSyncEnabled){
+    await syncAllSchedulesToCloud();
+  }
 }
 function toggleScheduleAttendance(scheduleId, playerId){
   const schedules = state.schedules.map(s=>{
@@ -799,6 +905,10 @@ function toggleScheduleAttendance(scheduleId, playerId){
   });
   setState({ schedules });
   saveLocalData();
+  const updated = schedules.find(s=>s.id===scheduleId);
+  if(state.cloudSyncEnabled && updated){
+    syncScheduleAttendanceToCloud(updated).catch((err)=>console.error('참석 동기화 실패', err));
+  }
 }
 function saveData(){ saveLocalData(); toast('✅ 로컬 저장 완료'); }
 function downloadBackup(){
@@ -869,8 +979,7 @@ function createDashboard(){
   return `<div class="space-y-4 sm:space-y-6">
     <div class="bg-gradient-to-r from-green-500 to-blue-600 text-white p-4 sm:p-6 rounded-lg">
       <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
-        <div><h1 class="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2">⚽ 화랑 FC</h1><p class="text-sm sm:text-lg opacity-90">축구는 나의 삶이다</p></div>
-        <div class="flex flex-col sm:flex-row gap-2"><button onclick="saveData()" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg flex items-center justify-center text-sm transition-all hover:scale-105">${icons.save}<span class="ml-2">저장</span></button><button onclick="downloadBackup()" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg flex items-center justify-center text-sm transition-all hover:scale-105">${icons.download}<span class="ml-2">백업</span></button></div>
+        <div class="flex items-center gap-3"><img src="assets/hwarang-logo.svg" alt="화랑FC 로고" class="w-12 h-12 sm:w-16 sm:h-16 object-contain rounded-full bg-white/10 p-1"/><div><h1 class="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2">화랑 FC</h1><p class="text-sm sm:text-lg opacity-90">since 2010</p></div></div>
       </div>
       ${state.saveStatus?`<div class="mt-3 text-sm opacity-95 bg-white/15 px-4 py-3 rounded-lg font-medium border border-white/20">${state.saveStatus}</div>`:''}
     </div>
@@ -887,7 +996,7 @@ function createDashboard(){
           <div class="font-semibold">이번주 일정</div>
           <button onclick="requestAdminAccess()" class="text-sm font-semibold text-blue-600 underline">관리자 수정</button>
         </div>
-        ${nextUpcoming ? `<div class="text-base sm:text-lg font-semibold text-gray-800 mt-2">${nextUpcoming.month}/${nextUpcoming.day} / ${nextUpcoming.location} / ${nextUpcoming.time}</div><div class="text-sm sm:text-base text-gray-600 mt-1">${nextUpcoming.address || '주소 미지정'}</div><div id="dashboard-kakao-map-canvas" class="w-full h-64 rounded-lg border mt-2"></div>${nextUpcoming.mapUrl ? `<a href="${nextUpcoming.mapUrl}" target="_blank" class="text-blue-600 underline text-sm mt-2 inline-block">카카오맵에서 크게보기</a>`:''}` : `<div class="text-sm text-gray-500 mt-2">다가오는 일정이 없습니다.</div>`}
+        ${nextUpcoming ? `<div class="text-base sm:text-lg font-semibold text-gray-800 mt-2">${formatScheduleHeadline(nextUpcoming)}</div><div class="text-sm sm:text-base text-gray-600 mt-1">${nextUpcoming.address || '주소 미지정'}</div><div id="dashboard-kakao-map-canvas" class="w-full h-64 rounded-lg border mt-2"></div>${nextUpcoming.mapUrl ? `<a href="${nextUpcoming.mapUrl}" target="_blank" class="text-blue-600 underline text-sm mt-2 inline-block">카카오맵에서 크게보기</a>`:''}` : `<div class="text-sm text-gray-500 mt-2">다가오는 일정이 없습니다.</div>`}
       </div>
       <div class="space-y-3 mt-3">
         ${days.map(day=>`<div class="border rounded-lg overflow-hidden"><div class="px-4 py-2 bg-gray-50 font-semibold">${day}</div>${byDate[day].map(sch=>{const attendees = state.players.filter(p=>sch.attendees.includes(p.id)); const isHighlighted = sch.id === nextUpcomingId; return `<div class="px-4 py-3 border-t ${isHighlighted?'bg-yellow-50':'bg-white'}"><div class="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center text-sm"><div class="font-semibold">${sch.time}</div><div class="sm:col-span-2 text-gray-700">${sch.location}<div class="text-xs text-gray-500">${sch.address || '주소 미지정'}</div></div><div class="font-medium">${sch.opponent}</div><div class="flex gap-2 sm:justify-end"><button onclick="setState({activeTab:'attendance', selectedScheduleId:'${sch.id}'})" class="px-2 py-1 rounded border text-xs">참석 ${attendees.length}명</button><button onclick="openMapModal('${sch.id}')" class="px-2 py-1 rounded border text-xs">지도</button></div></div></div>`;}).join('')}</div>`).join('')}
@@ -939,7 +1048,7 @@ function createAdmin(){
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
       <h3 class="text-base sm:text-lg font-semibold mb-2">관리자: 카톡 일정 붙여넣기</h3>
       <p class="text-xs sm:text-sm text-gray-600 mb-3">예: 4/11 충장(vs 나눔) 7-10시 형식으로 줄바꿈 입력하면 자동 파싱됩니다.</p>
-      <p class="text-xs text-gray-500 mb-2">API 키를 코드에 직접 넣으려면 파일 상단의 <code>KAKAO_REST_API_KEY</code>, <code>KAKAO_JS_API_KEY</code> 값에 붙여넣으면 됩니다.</p>
+      <p class="text-xs text-gray-500 mb-2">권장: <code>config.example.js</code>를 복사해 <code>config.local.js</code>를 만들고 키를 관리하세요 (저장소 커밋 금지).</p><p class="text-xs text-gray-500 mb-2">클라우드 동기화: <span class="font-semibold">${state.cloudSyncStatus || '미연결'}</span></p>
       <div class="grid grid-cols-1 sm:grid-cols-5 gap-2 mb-3">
         <input class="border rounded-lg px-3 py-2 text-sm sm:col-span-2" placeholder="Kakao REST API Key (주소→좌표 변환용)" value="${state.kakaoRestKey}" oninput="setState({kakaoRestKey:this.value})">
         <input class="border rounded-lg px-3 py-2 text-sm sm:col-span-2" placeholder="Kakao JavaScript Key (지도 렌더링용)" value="${state.kakaoJsKey}" oninput="setState({kakaoJsKey:this.value})">
@@ -1037,9 +1146,12 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   loadLocalData();
   initSchedulesFromInput();
   await loadLocalMembersJson(); // 로컬 JSON 멤버 목록 로드(주차 설정 자동 반영)
+  await initFirebaseSync();
   render();
 });
 </script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoad()"></script>
 <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoad()"></script>
 </body>
