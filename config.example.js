@@ -7,4 +7,16 @@ window.APP_CONFIG = {
   KAKAO_REST_API_KEY: '',
   KAKAO_JS_API_KEY: '',
   ADMIN_PASSWORD: '1234',
+
+  // Firebase (GCP project: github-475723)
+  FIREBASE_SYNC_ENABLED: true,
+  FIREBASE_ATTENDANCE_COLLECTION: 'schedule_attendance',
+  FIREBASE_CONFIG: {
+    apiKey: '',
+    authDomain: 'github-475723.firebaseapp.com',
+    projectId: 'github-475723',
+    storageBucket: 'github-475723.appspot.com',
+    messagingSenderId: '',
+    appId: '',
+  },
 };

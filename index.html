@@ -137,6 +137,9 @@ const KAKAO_JS_API_KEY = APP_CONFIG.KAKAO_JS_API_KEY || ''; // config에서 관�
 const ADMIN_PASSWORD = APP_CONFIG.ADMIN_PASSWORD || '1234';
 const DISCOVERY_DOCS = ['https://sheets.googleapis.com/$discovery/rest?version=v4'];
 const SCOPES = 'https://www.googleapis.com/auth/spreadsheets'; // 쓰기 권한 스코프
+const FIREBASE_CONFIG = APP_CONFIG.FIREBASE_CONFIG || null;
+const FIREBASE_SYNC_ENABLED = APP_CONFIG.FIREBASE_SYNC_ENABLED !== false;
+const FIREBASE_ATTENDANCE_COLLECTION = APP_CONFIG.FIREBASE_ATTENDANCE_COLLECTION || 'schedule_attendance';
 
 const VENUE_ADDRESS_MAP = {
   '충장근린체육공원': '경기 고양시 덕양구 행주내동 636',
@@ -178,6 +181,8 @@ let state = {
   selectedMonth: new Date().getMonth() + 1,
   showPastMonths: false,
   adminUnlocked: false,
+  cloudSyncEnabled: false,
+  cloudSyncStatus: "",
   kakaoRestKey: "",
   kakaoJsKey: "",
   scheduleInput: `3/28 중산구장(vs 마크) 7-10시
@@ -198,6 +203,8 @@ let state = {
 let tokenClient;
 let gapiInited = false;
 let gisInited = false;
+let firebaseApp = null;
+let firestoreDb = null;
 
 const positionLabels = { gk: ['GK'], def: ['LB','CB','CB','RB'], dmf: ['DMF','DMF'], cmf: ['LM','CM','RM'], amf: ['LW','RW'], fw: ['ST'] };
 const rowOrder = ['fw','amf','cmf','dmf','def','gk'];
@@ -630,6 +637,84 @@ async function addMatchToSheet(matchData) {
   }
 }
 
+
+function hasFirebaseConfig(){
+  return !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId && window.firebase);
+}
+function getAttendanceCollection(){
+  if(!firestoreDb) return null;
+  return firestoreDb.collection(FIREBASE_ATTENDANCE_COLLECTION);
+}
+function mergeSchedulesWithCloudAttendance(baseSchedules, cloudRows){
+  const cloudMap = Object.fromEntries((cloudRows || []).map(row=>[row.id, row]));
+  return (baseSchedules || []).map(s=>{
+    const cloud = cloudMap[s.id];
+    if(!cloud) return s;
+    return { ...s, attendees: Array.isArray(cloud.attendees) ? cloud.attendees : s.attendees };
+  });
+}
+async function loadCloudAttendance(){
+  const col = getAttendanceCollection();
+  if(!col) return [];
+  const snapshot = await col.get();
+  return snapshot.docs.map(doc=>({ id: doc.id, ...doc.data() }));
+}
+async function syncAllSchedulesToCloud(){
+  const col = getAttendanceCollection();
+  if(!col) return;
+  const jobs = state.schedules.map(s=> col.doc(s.id).set({
+    scheduleId: s.id,
+    attendees: s.attendees || [],
+    month: s.month,
+    day: s.day,
+    location: s.location,
+    updatedAt: new Date().toISOString(),
+  }, { merge:true }));
+  await Promise.all(jobs);
+}
+async function syncScheduleAttendanceToCloud(schedule){
+  const col = getAttendanceCollection();
+  if(!col || !schedule) return;
+  await col.doc(schedule.id).set({
+    scheduleId: schedule.id,
+    attendees: schedule.attendees || [],
+    month: schedule.month,
+    day: schedule.day,
+    location: schedule.location,
+    updatedAt: new Date().toISOString(),
+  }, { merge:true });
+}
+async function initFirebaseSync(){
+  if(!FIREBASE_SYNC_ENABLED){
+    setState({ cloudSyncStatus: 'Firebase 동기화 비활성화' });
+    return;
+  }
+  if(!hasFirebaseConfig()){
+    setState({ cloudSyncStatus: 'Firebase 설정이 없어 로컬 저장만 사용 중' });
+    return;
+  }
+  try{
+    if(!firebase.apps.length){
+      firebaseApp = firebase.initializeApp(FIREBASE_CONFIG);
+    } else {
+      firebaseApp = firebase.app();
+    }
+    firestoreDb = firebase.firestore();
+
+    const cloudRows = await loadCloudAttendance();
+    if(cloudRows.length){
+      const merged = mergeSchedulesWithCloudAttendance(state.schedules, cloudRows);
+      setState({ schedules: merged, cloudSyncEnabled: true, cloudSyncStatus: `Firebase 동기화 연결됨 (${FIREBASE_CONFIG.projectId})` });
+      saveLocalData();
+    } else {
+      await syncAllSchedulesToCloud();
+      setState({ cloudSyncEnabled: true, cloudSyncStatus: `Firebase 동기화 시작됨 (${FIREBASE_CONFIG.projectId})` });
+    }
+  } catch(err){
+    console.error('Firebase 동기화 초기화 실패', err);
+    setState({ cloudSyncStatus: 'Firebase 동기화 실패 - 로컬 모드로 동작' });
+  }
+}
 // --- LOCAL STORAGE (for formation/quarters) ---
 function saveLocalData(){
   const data = {
@@ -808,6 +893,9 @@ async function applyScheduleInput(){
   }
   setState({ schedules: parsed, selectedMonth: pickDefaultMonth(parsed), selectedScheduleId: getDefaultScheduleId(parsed), saveStatus: "✅ 일정이 업데이트되었습니다" });
   saveLocalData();
+  if(state.cloudSyncEnabled){
+    await syncAllSchedulesToCloud();
+  }
 }
 function toggleScheduleAttendance(scheduleId, playerId){
   const schedules = state.schedules.map(s=>{
@@ -817,6 +905,10 @@ function toggleScheduleAttendance(scheduleId, playerId){
   });
   setState({ schedules });
   saveLocalData();
+  const updated = schedules.find(s=>s.id===scheduleId);
+  if(state.cloudSyncEnabled && updated){
+    syncScheduleAttendanceToCloud(updated).catch((err)=>console.error('참석 동기화 실패', err));
+  }
 }
 function saveData(){ saveLocalData(); toast('✅ 로컬 저장 완료'); }
 function downloadBackup(){
@@ -956,7 +1048,7 @@ function createAdmin(){
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
       <h3 class="text-base sm:text-lg font-semibold mb-2">관리자: 카톡 일정 붙여넣기</h3>
       <p class="text-xs sm:text-sm text-gray-600 mb-3">예: 4/11 충장(vs 나눔) 7-10시 형식으로 줄바꿈 입력하면 자동 파싱됩니다.</p>
-      <p class="text-xs text-gray-500 mb-2">권장: <code>config.example.js</code>를 복사해 <code>config.local.js</code>를 만들고 키를 관리하세요 (저장소 커밋 금지).</p>
+      <p class="text-xs text-gray-500 mb-2">권장: <code>config.example.js</code>를 복사해 <code>config.local.js</code>를 만들고 키를 관리하세요 (저장소 커밋 금지).</p><p class="text-xs text-gray-500 mb-2">클라우드 동기화: <span class="font-semibold">${state.cloudSyncStatus || '미연결'}</span></p>
       <div class="grid grid-cols-1 sm:grid-cols-5 gap-2 mb-3">
         <input class="border rounded-lg px-3 py-2 text-sm sm:col-span-2" placeholder="Kakao REST API Key (주소→좌표 변환용)" value="${state.kakaoRestKey}" oninput="setState({kakaoRestKey:this.value})">
         <input class="border rounded-lg px-3 py-2 text-sm sm:col-span-2" placeholder="Kakao JavaScript Key (지도 렌더링용)" value="${state.kakaoJsKey}" oninput="setState({kakaoJsKey:this.value})">
@@ -1054,9 +1146,12 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   loadLocalData();
   initSchedulesFromInput();
   await loadLocalMembersJson(); // 로컬 JSON 멤버 목록 로드(주차 설정 자동 반영)
+  await initFirebaseSync();
   render();
 });
 </script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoad()"></script>
 <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoad()"></script>
 </body>
