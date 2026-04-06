@@ -141,12 +141,16 @@ let state = {
   formation: {
     gk: [null], def: [null,null,null,null], dmf: [null,null], cmf: [null,null,null], amf: [null,null], fw: [null]
   },
-  quarters: [null, null, null, null], 
+  quarters: [null, null, null, null],
   currentQuarter: 1,
   newMatch: { opponent:"", location:"", date:"", result:"", goals:0, conceded:0, scorers:"" },
   draggedPlayer: null,
   saveStatus: "",
   playerSearch: "",
+  recordSearch: "",
+  weekOffset: 0,
+  weeklyConfig: {},
+  personalRecords: {},
   ui: { pickerOpen:false, pickerPos:null, pickerSlot:null, pickerSearch:"" },
   isGapiLoaded: false,
   isGapiSignedIn: false, // 쓰기 권한이 있는 관리자 로그인 여부
@@ -186,6 +190,41 @@ function sanitizeName(raw){
 }
 function safeJSON(s, fallback){ try{ return JSON.parse(s); }catch{ return fallback; } }
 function deepCopyFormation(f){ return JSON.parse(JSON.stringify(f)); }
+
+function weekKeyFromOffset(offset = 0){
+  const now = new Date();
+  const day = now.getDay();
+  const diff = (day + 6) % 7;
+  const monday = new Date(now);
+  monday.setHours(0,0,0,0);
+  monday.setDate(now.getDate() - diff + offset * 7);
+  const y = monday.getFullYear();
+  const m = String(monday.getMonth()+1).padStart(2,'0');
+  const d = String(monday.getDate()).padStart(2,'0');
+  return `${y}-${m}-${d}`;
+}
+function weekRangeLabel(offset = 0){
+  const key = weekKeyFromOffset(offset);
+  const start = new Date(`${key}T00:00:00`);
+  const end = new Date(start);
+  end.setDate(start.getDate()+6);
+  const fmt = (v)=>`${v.getMonth()+1}/${v.getDate()}`;
+  return `${fmt(start)} ~ ${fmt(end)}`;
+}
+function defaultPersonalRecord(){ return { goals:0, assists:0, shots:0, tackles:0, saves:0, note:"" }; }
+function currentWeekConfig(){
+  const key = weekKeyFromOffset(state.weekOffset);
+  if(!state.weeklyConfig[key]) state.weeklyConfig[key] = { attendance:{}, positions:{} };
+  return { key, cfg: state.weeklyConfig[key] };
+}
+function applyWeeklySettings(players){
+  const { cfg } = currentWeekConfig();
+  return players.map(p=>({
+    ...p,
+    isPresent: cfg.attendance[p.id] ?? false,
+    position: cfg.positions[p.id] || p.position || 'MF',
+  }));
+}
 
 // --- GOOGLE SHEETS API ---
 function gapiLoad() {
@@ -323,8 +362,32 @@ async function addMatchToSheet(matchData) {
 }
 
 // --- LOCAL STORAGE (for formation/quarters) ---
-function saveLocalData(){ const data = { formation: state.formation, quarters: state.quarters, currentQuarter: state.currentQuarter, savedAt: new Date().toISOString() }; localStorage.setItem('hwarangLocalData', JSON.stringify(data)); }
-function loadLocalData(){ const saved = localStorage.getItem('hwarangLocalData'); const savedData = saved ? safeJSON(saved, null) : null; if(savedData){ setState({ formation: savedData.formation || state.formation, quarters: savedData.quarters || [null,null,null,null], currentQuarter: savedData.currentQuarter || 1, }); } }
+function saveLocalData(){
+  const data = {
+    formation: state.formation,
+    quarters: state.quarters,
+    currentQuarter: state.currentQuarter,
+    weeklyConfig: state.weeklyConfig,
+    weekOffset: state.weekOffset,
+    personalRecords: state.personalRecords,
+    savedAt: new Date().toISOString()
+  };
+  localStorage.setItem('hwarangLocalData', JSON.stringify(data));
+}
+function loadLocalData(){
+  const saved = localStorage.getItem('hwarangLocalData');
+  const savedData = saved ? safeJSON(saved, null) : null;
+  if(savedData){
+    setState({
+      formation: savedData.formation || state.formation,
+      quarters: savedData.quarters || [null,null,null,null],
+      currentQuarter: savedData.currentQuarter || 1,
+      weeklyConfig: savedData.weeklyConfig || {},
+      weekOffset: savedData.weekOffset || 0,
+      personalRecords: savedData.personalRecords || {},
+    });
+  }
+}
 
 /**
  * 구성원 목록은 members.json 파일에서 로드합니다.
@@ -344,7 +407,7 @@ async function loadLocalMembersJson() {
             isPresent: false, 
         }));
         
-        setState({ players });
+        setState({ players: applyWeeklySettings(players) });
     } catch (err) {
         console.error("로컬 members.json 파일 로드 및 처리 실패:", err);
     }
@@ -352,8 +415,50 @@ async function loadLocalMembersJson() {
 
 
 // --- PLAYER / ATTEND ---
-function toggleAttendance(id){ setState({ players: state.players.map(p=> p.id===id ? {...p, isPresent:!p.isPresent} : p ) }); saveLocalData(); }
-function clearAllAttendance(){ setState({ players: state.players.map(p=>({...p, isPresent:false})) }); saveLocalData(); }
+function persistWeeklyPlayers(players){
+  const { key, cfg } = currentWeekConfig();
+  const attendance = { ...cfg.attendance };
+  const positions = { ...cfg.positions };
+  players.forEach(p=>{ attendance[p.id] = !!p.isPresent; positions[p.id] = p.position || 'MF'; });
+  const weeklyConfig = { ...state.weeklyConfig, [key]: { attendance, positions } };
+  setState({ players, weeklyConfig });
+  saveLocalData();
+}
+function toggleAttendance(id){
+  const players = state.players.map(p=> p.id===id ? {...p, isPresent:!p.isPresent} : p );
+  persistWeeklyPlayers(players);
+}
+function clearAllAttendance(){
+  const players = state.players.map(p=>({...p, isPresent:false}));
+  persistWeeklyPlayers(players);
+}
+function updatePlayerPosition(id, position){
+  const players = state.players.map(p=> p.id===id ? {...p, position} : p );
+  persistWeeklyPlayers(players);
+}
+function shiftWeek(delta){
+  const weekOffset = state.weekOffset + delta;
+  const key = weekKeyFromOffset(weekOffset);
+  const cfg = state.weeklyConfig[key] || { attendance:{}, positions:{} };
+  const players = state.players.map(p=>({
+    ...p,
+    isPresent: cfg.attendance[p.id] ?? false,
+    position: cfg.positions[p.id] || p.position || 'MF',
+  }));
+  setState({ weekOffset, players });
+  saveLocalData();
+}
+function copyPreviousWeek(){
+  const prevKey = weekKeyFromOffset(state.weekOffset - 1);
+  const curKey = weekKeyFromOffset(state.weekOffset);
+  const prev = state.weeklyConfig[prevKey];
+  if(!prev){ toast('⚠️ 이전 주차 데이터가 없습니다'); return; }
+  const weeklyConfig = { ...state.weeklyConfig, [curKey]: JSON.parse(JSON.stringify(prev)) };
+  const cfg = weeklyConfig[curKey];
+  const players = state.players.map(p=> ({ ...p, isPresent: cfg.attendance[p.id] ?? false, position: cfg.positions[p.id] || 'MF' }));
+  setState({ weeklyConfig, players, saveStatus:'✅ 지난주 설정을 복사했습니다' });
+  saveLocalData();
+}
 function setActiveTab(tab){ setState({activeTab:tab}); }
 function getPresentPlayers(){ return state.players.filter(p=>p.isPresent); }
 
@@ -361,6 +466,33 @@ function getPresentPlayers(){ return state.players.filter(p=>p.isPresent); }
 function updateNewMatch(field,v){ setState({ newMatch:{...state.newMatch,[field]:v} }); }
 function addMatch(){ const m = state.newMatch; if(!(m.opponent && m.location && m.date)) { toast("⚠️ 상대팀, 경기장, 날짜를 모두 입력해주세요"); return; } const matchDate = new Date(m.date); const today = new Date(); today.setHours(0, 0, 0, 0); if (matchDate < today) { toast("⚠️ 과거 날짜는 선택할 수 없습니다"); return; } const goals = Math.max(0, parseInt(m.goals) || 0); const conceded = Math.max(0, parseInt(m.conceded) || 0); if (state.isGapiSignedIn) { addMatchToSheet({ ...m, goals, conceded }); } else { toast("⚠️ Google에 로그인해야 저장할 수 있습니다."); } }
 function teamStats(){ const ms = state.matches, matches=ms.length; const wins=ms.filter(m=>m.result==="W").length, draws=ms.filter(m=>m.result==="D").length, losses=ms.filter(m=>m.result==="L").length; const goalsFor=ms.reduce((s,m)=>s+m.goals,0), goalsAgainst=ms.reduce((s,m)=>s+m.conceded,0), cleanSheets=ms.filter(m=>m.conceded===0).length; return { matches,wins,draws,losses,goalsFor,goalsAgainst,cleanSheets, winRate: matches?((wins/matches)*100).toFixed(1):0, avgGoalsFor: matches?(goalsFor/matches).toFixed(2):0, avgGoalsAgainst: matches?(goalsAgainst/matches).toFixed(2):0, cleanSheetRate: matches?((cleanSheets/matches)*100).toFixed(1):0 }; }
+
+function recFor(id){ return state.personalRecords[id] || defaultPersonalRecord(); }
+function updatePersonalRecord(id, field, value){
+  const current = recFor(id);
+  const next = { ...current, [field]: field==='note' ? value : Math.max(0, parseInt(value) || 0) };
+  const personalRecords = { ...state.personalRecords, [id]: next };
+  setState({ personalRecords });
+  saveLocalData();
+}
+function topScorers(){
+  return state.players
+    .map(p=>({ ...p, goals: recFor(p.id).goals || 0 }))
+    .sort((a,b)=>b.goals-a.goals)
+    .slice(0,5);
+}
+function saveData(){ saveLocalData(); toast('✅ 로컬 저장 완료'); }
+function downloadBackup(){
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    localData: safeJSON(localStorage.getItem('hwarangLocalData') || '{}', {}),
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `hwarang-backup-${weekKeyFromOffset(state.weekOffset)}.json`;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
 
 // --- QUARTERS ---
 function setCurrentQuarter(n){ setState({ currentQuarter:n }); saveLocalData(); }
@@ -390,23 +522,79 @@ function createApp(){ return `<div class="min-h-screen bg-gray-50">${createNav()
 // 변경: 'sync' 탭 제거됨
 function createNav(){ const tabs = [{id:'dashboard', name:'대시보드', icon:'barChart'},{id:'matches', name:'경기 기록', icon:'calendar'},{id:'formation', name:'포메이션', icon:'target'},{id:'members', name:'구성원', icon:'users'}]; return `<nav class="bg-white shadow-sm border-b"><div class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8"><div class="flex space-x-2 sm:space-x-6 overflow-x-auto nav-scroll py-2">${tabs.map(t=>`<button onclick="setActiveTab('${t.id}')" class="py-2 sm:py-3 px-2 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap flex items-center flex-shrink-0 ${state.activeTab===t.id?'border-blue-500 text-blue-600':'border-transparent text-gray-500 hover:text-gray-700'}"><span class="icon-lg mr-1">${icons[t.icon]}</span>${t.name}</button>`).join('')}</div></div></nav>`; }
 
-function createDashboard(){ const s = teamStats(); const top = [...state.players].sort((a,b)=>b.goals-a.goals).slice(0,5); return `<div class="space-y-4 sm:space-y-6"><div class="bg-gradient-to-r from-green-500 to-blue-600 text-white p-4 sm:p-6 rounded-lg"><div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4"><div><h1 class="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2">⚽ 화랑 FC</h1><p class="text-sm sm:text-lg opacity-90">축구는 나의 삶이다</p></div><div class="flex flex-col sm:flex-row gap-2"><button onclick="saveData()" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg flex items-center justify-center text-sm transition-all hover:scale-105">${icons.save}<span class="ml-2">저장</span></button><button onclick="downloadBackup()" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg flex items-center justify-center text-sm transition-all hover:scale-105">${icons.download}<span class="ml-2">백업</span></button></div></div>${state.saveStatus?`<div class="mt-3 text-sm opacity-95 bg-white/15 px-4 py-3 rounded-lg font-medium border border-white/20">${state.saveStatus}</div>`:''}</div><div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">${statCard("경기수", s.matches, "calendar","text-green-500")}${statCard("승률", s.winRate+"%", "barChart","text-blue-500")}${statCard("득점", s.goalsFor, "target","text-red-500")}${statCard("실점", s.goalsAgainst, "shield","text-purple-500")}</div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.target}<span class="ml-2">Top 득점자</span></h3>${top.length ? top.map((p,i)=>`<div class="flex items-center justify-between py-2"><div class="flex items-center"><span class="w-6 h-6 sm:w-7 sm:h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold mr-3">${i+1}</span><span class="text-sm sm:text-base font-medium">${p.name}</span><span class="ml-2 text-xs text-gray-500">(${p.position})</span></div><span class="text-sm sm:text-base font-bold text-blue-600">${p.goals}골</span></div>`).join('') : '<div class="text-gray-500 text-sm text-center py-6">득점 기록이 없습니다</div>'}</div></div>`; }
+function createDashboard(){ const s = teamStats(); const top = topScorers(); return `<div class="space-y-4 sm:space-y-6"><div class="bg-gradient-to-r from-green-500 to-blue-600 text-white p-4 sm:p-6 rounded-lg"><div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4"><div><h1 class="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2">⚽ 화랑 FC</h1><p class="text-sm sm:text-lg opacity-90">축구는 나의 삶이다</p></div><div class="flex flex-col sm:flex-row gap-2"><button onclick="saveData()" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg flex items-center justify-center text-sm transition-all hover:scale-105">${icons.save}<span class="ml-2">저장</span></button><button onclick="downloadBackup()" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg flex items-center justify-center text-sm transition-all hover:scale-105">${icons.download}<span class="ml-2">백업</span></button></div></div>${state.saveStatus?`<div class="mt-3 text-sm opacity-95 bg-white/15 px-4 py-3 rounded-lg font-medium border border-white/20">${state.saveStatus}</div>`:''}</div><div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">${statCard("경기수", s.matches, "calendar","text-green-500")}${statCard("승률", s.winRate+"%", "barChart","text-blue-500")}${statCard("득점", s.goalsFor, "target","text-red-500")}${statCard("실점", s.goalsAgainst, "shield","text-purple-500")}</div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.target}<span class="ml-2">Top 득점자</span></h3>${top.length ? top.map((p,i)=>`<div class="flex items-center justify-between py-2"><div class="flex items-center"><span class="w-6 h-6 sm:w-7 sm:h-7 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold mr-3">${i+1}</span><span class="text-sm sm:text-base font-medium">${p.name}</span><span class="ml-2 text-xs text-gray-500">(${p.position})</span></div><span class="text-sm sm:text-base font-bold text-blue-600">${p.goals}골</span></div>`).join('') : '<div class="text-gray-500 text-sm text-center py-6">득점 기록이 없습니다</div>'}</div></div>`; }
 function statCard(label,value,icon,color){ return `<div class="bg-white p-3 sm:p-4 rounded-lg shadow-md border-l-4 border-blue-400 hover:shadow-lg transition-shadow"><div class="flex items-center justify-between"><div><p class="text-gray-600 text-xs sm:text-sm font-medium">${label}</p><p class="text-lg sm:text-2xl font-bold text-gray-800 mt-1">${value}</p></div><div class="icon-lg ${color} flex-shrink-0">${icons[icon]}</div></div></div>`; }
-function createMatches(){ return `<div class="space-y-4 sm:space-y-6"><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4">새 경기 추가</h3><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4"><input class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="상대팀" value="${state.newMatch.opponent}" onchange="updateNewMatch('opponent', this.value)"><input class="border rounded-lg px-3 py-2 w-full text-sm sm:text-base" placeholder="경기장" value="${state.newMatch.location}" onchange="updateNewMatch('location', this.value)"><input type="date" class="border rounded-lg px-3 py-2 text-sm sm:text-base" value="${state.newMatch.date}" onchange="updateNewMatch('date', this.value)"><select class="border rounded-lg px-3 py-2 text-sm sm:text-base" value="${state.newMatch.result}" onchange="updateNewMatch('result', this.value)"><option value="">결과 선택</option><option value="W">승리</option><option value="D">무승부</option><option value="L">패배</option></select><input type="number" class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="팀 득점" value="${state.newMatch.goals}" onchange="updateNewMatch('goals', parseInt(this.value)||0)"><input type="number" class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="팀 실점" value="${state.newMatch.conceded}" onchange="updateNewMatch('conceded', parseInt(this.value)||0)"><input class="border rounded-lg px-3 py-2 text-sm sm:text-base lg:col-span-3" placeholder="득점자 (쉼표로 구분)" value="${state.newMatch.scorers}" onchange="updateNewMatch('scorers', this.value)"></div><button onclick="addMatch()" class="mt-3 sm:mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center text-sm sm:text-base">${state.isGapiSignedIn ? icons.plus : icons.shield}<span class="ml-1">${state.isGapiSignedIn ? '경기 추가' : '로그인 필요'}</span></button> ${!state.isGapiSignedIn && state.isGapiLoaded ? `<button onclick="handleAuthClick()" class="ml-3 mt-3 sm:mt-4 bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 text-sm">저장 권한 얻기</button>` : ''} </div><div class="bg-white rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold p-4 sm:p-6 border-b">경기 기록</h3><div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-50"><tr><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">날짜</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상대팀</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">장소</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">결과</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">스코어</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">득점자</th></tr></thead><tbody class="divide-y divide-gray-200">${state.matches.map(m=>`<tr class="hover:bg-gray-50"><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">${m.date}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">${m.opponent}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500 hidden sm:table-cell">${m.location}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap"><span class="px-2 py-1 text-xs rounded-full ${m.result==='W'?'bg-green-100 text-green-800':m.result==='L'?'bg-red-100 text-red-800':'bg-yellow-100 text-yellow-800'}">${m.result==='W'?'승':m.result==='L'?'패':'무'}</span></td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm font-medium">${m.score}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-600">${m.scorers}</td></tr>`).join('')}</tbody></table></div></div></div>`; }
+function createMatches(){
+  const isDesktop = window.innerWidth >= 1024;
+  const q = state.recordSearch.trim().toLowerCase();
+  const players = q ? state.players.filter(p=>p.name.toLowerCase().includes(q)) : state.players;
+  return `<div class="space-y-4 sm:space-y-6">
+    <div class="bg-indigo-50 border border-indigo-200 p-4 rounded-lg">
+      <h3 class="font-semibold text-base sm:text-lg mb-1">입력 모드: 모바일 + 데스크톱 병행</h3>
+      <p class="text-sm text-gray-700">모바일은 현장 기록(빠른 입력), 데스크톱은 경기/개인 기록(대량 입력)에 최적화했습니다.</p>
+    </div>
+    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+      <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4">새 경기 추가</h3>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+        <input class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="상대팀" value="${state.newMatch.opponent}" onchange="updateNewMatch('opponent', this.value)">
+        <input class="border rounded-lg px-3 py-2 w-full text-sm sm:text-base" placeholder="경기장" value="${state.newMatch.location}" onchange="updateNewMatch('location', this.value)">
+        <input type="date" class="border rounded-lg px-3 py-2 text-sm sm:text-base" value="${state.newMatch.date}" onchange="updateNewMatch('date', this.value)">
+        <select class="border rounded-lg px-3 py-2 text-sm sm:text-base" value="${state.newMatch.result}" onchange="updateNewMatch('result', this.value)"><option value="">결과 선택</option><option value="W">승리</option><option value="D">무승부</option><option value="L">패배</option></select>
+        <input type="number" class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="팀 득점" value="${state.newMatch.goals}" onchange="updateNewMatch('goals', parseInt(this.value)||0)">
+        <input type="number" class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="팀 실점" value="${state.newMatch.conceded}" onchange="updateNewMatch('conceded', parseInt(this.value)||0)">
+        <input class="border rounded-lg px-3 py-2 text-sm sm:text-base lg:col-span-3" placeholder="득점자 (쉼표로 구분)" value="${state.newMatch.scorers}" onchange="updateNewMatch('scorers', this.value)">
+      </div>
+      <button onclick="addMatch()" class="mt-3 sm:mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center text-sm sm:text-base">${state.isGapiSignedIn ? icons.plus : icons.shield}<span class="ml-1">${state.isGapiSignedIn ? '경기 추가' : '로그인 필요'}</span></button>
+      ${!state.isGapiSignedIn && state.isGapiLoaded ? `<button onclick="handleAuthClick()" class="ml-3 mt-3 sm:mt-4 bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 text-sm">저장 권한 얻기</button>` : ''}
+    </div>
+    <div class="bg-white rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold p-4 sm:p-6 border-b">경기 기록</h3><div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-50"><tr><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">날짜</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상대팀</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">장소</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">결과</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">스코어</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">득점자</th></tr></thead><tbody class="divide-y divide-gray-200">${state.matches.map(m=>`<tr class="hover:bg-gray-50"><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">${m.date}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">${m.opponent}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500 hidden sm:table-cell">${m.location}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap"><span class="px-2 py-1 text-xs rounded-full ${m.result==='W'?'bg-green-100 text-green-800':m.result==='L'?'bg-red-100 text-red-800':'bg-yellow-100 text-yellow-800'}">${m.result==='W'?'승':m.result==='L'?'패':'무'}</span></td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm font-medium">${m.score}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-600">${m.scorers}</td></tr>`).join('')}</tbody></table></div></div>
+    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 mb-4">
+        <h3 class="text-base sm:text-lg font-semibold">개인 기록 ${isDesktop ? '워크스페이스 (데스크톱)' : '요약 (모바일)'}</h3>
+        <input class="border rounded-lg px-3 py-2 text-sm w-full lg:w-64" placeholder="선수 검색" value="${state.recordSearch}" oninput="setState({recordSearch:this.value})">
+      </div>
+      ${isDesktop ? `<div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-gray-50"><tr><th class="px-3 py-2 text-left">선수</th><th class="px-3 py-2 text-left">포지션</th><th class="px-3 py-2 text-left">득점</th><th class="px-3 py-2 text-left">도움</th><th class="px-3 py-2 text-left">슈팅</th><th class="px-3 py-2 text-left">태클</th><th class="px-3 py-2 text-left">선방</th><th class="px-3 py-2 text-left">메모</th></tr></thead><tbody class="divide-y">${players.map(p=>{const r=recFor(p.id);return `<tr><td class="px-3 py-2 font-medium">${p.name}</td><td class="px-3 py-2 text-gray-600">${p.position}</td><td class="px-3 py-2"><input type="number" min="0" class="border rounded px-2 py-1 w-16" value="${r.goals}" onchange="updatePersonalRecord(${p.id},'goals',this.value)"></td><td class="px-3 py-2"><input type="number" min="0" class="border rounded px-2 py-1 w-16" value="${r.assists}" onchange="updatePersonalRecord(${p.id},'assists',this.value)"></td><td class="px-3 py-2"><input type="number" min="0" class="border rounded px-2 py-1 w-16" value="${r.shots}" onchange="updatePersonalRecord(${p.id},'shots',this.value)"></td><td class="px-3 py-2"><input type="number" min="0" class="border rounded px-2 py-1 w-16" value="${r.tackles}" onchange="updatePersonalRecord(${p.id},'tackles',this.value)"></td><td class="px-3 py-2"><input type="number" min="0" class="border rounded px-2 py-1 w-16" value="${r.saves}" onchange="updatePersonalRecord(${p.id},'saves',this.value)"></td><td class="px-3 py-2"><input class="border rounded px-2 py-1 w-full" value="${r.note||''}" onchange="updatePersonalRecord(${p.id},'note',this.value)"></td></tr>`}).join('')}</tbody></table></div>` : `<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${players.slice(0,8).map(p=>{const r=recFor(p.id);return `<div class="border rounded-lg p-3"><div class="font-medium">${p.name} <span class="text-xs text-gray-500">(${p.position})</span></div><div class="text-xs text-gray-600 mt-1">득점 ${r.goals} · 도움 ${r.assists} · 슈팅 ${r.shots}</div></div>`}).join('')}</div>`}
+    </div>
+  </div>`;
+}
 function createFormation(){ const present = getPresentPlayers(); const total = Object.values(state.formation).flat().filter(Boolean).length; const savedQuarters = getSavedQuartersCount(); return `<div class="space-y-4 sm:space-y-6"><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div class="flex items-center gap-2"><span class="text-sm text-gray-600 font-medium">현재 쿼터</span>${[1,2,3,4].map(n=>`<button onclick="setCurrentQuarter(${n})" class="px-3 py-2 rounded-lg text-sm font-medium transition-all relative ${state.currentQuarter===n?'bg-blue-600 text-white shadow-md':'bg-gray-100 hover:bg-gray-200'}">${n}${state.quarters[n-1] ? '<span class="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full"></span>' : ''}</button>`).join('')}</div><div class="text-sm text-gray-600"><span class="font-medium">저장된 쿼터: <span class="text-blue-600">${savedQuarters}/4</span></span></div></div><div class="mt-3 flex items-center justify-between text-sm"><span class="text-gray-600">📊 출석: <span class="font-semibold text-blue-600">${present.length}명</span> | 배치: <span class="font-semibold ${total===11?'text-green-600':total>11?'text-red-600':'text-orange-600'}">${total}/11명</span></span>${state.saveStatus?`<span class="text-green-600 font-medium">${state.saveStatus}</span>`:''}</div></div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.users}<span class="ml-2">출석 인원</span></h3><div class="flex flex-wrap gap-2">${present.map(p=>{ const placed = Object.values(state.formation).flat().some(x=>x && x.id===p.id); const played = quartersPlayedCount(p.id); return `<div class="player-chip no-select ${placed?'bg-gray-200 text-gray-600':'bg-blue-100 text-blue-800 hover:bg-blue-200'} px-3 py-2 rounded-full text-sm font-medium ${placed?'cursor-not-allowed':'cursor-move'} transition-all" ${!placed?'draggable="true" ondragstart="handleDragStart(event, '+p.id+')" ondragend="handleDragEnd(event)"':''} style="touch-action:none;"><span class="mr-1">${p.name}</span><span class="text-xs opacity-75">(${p.position})</span><span class="ml-1 text-xs px-1 py-0.5 rounded ${played >= 2 ? 'bg-green-200 text-green-800' : played >= 1 ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-200 text-gray-600'}">${played}/4</span>${placed?'<span class="ml-1 text-xs">✓</span>':''}</div>`; }).join('')}</div>${present.length===0?'<p class="text-gray-500 text-sm mt-2 text-center py-4 bg-gray-50 rounded-lg">💡 선수 관리 탭에서 출석 체크 후 여기서 배치하세요</p>':''}</div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.target}<span class="ml-2">포메이션 - ${state.currentQuarter}쿼터</span></h3><div class="pitch"><div class="half-line"></div><div class="center-circle"></div><div class="center-dot"></div><div class="box top"></div><div class="box bottom"></div><div class="relative h-full flex flex-col justify-between py-8 sm:py-16">${rowOrder.map(pos => createPositionRow(pos)).join('')}</div></div><div class="mt-4 text-center"><span class="text-sm font-medium ${total===11?'text-green-600': total>11?'text-red-600':'text-gray-700'}">🏟️ 필드 선수: ${total}/11명 ${total>11?' ⚠️ 인원 초과!':''} ${total===11?' ✅ 완료':''}</span></div><div class="mt-4 flex flex-col sm:flex-row justify-center items-center gap-3"><button onclick="saveCurrentFormation()" class="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm flex items-center hover:bg-blue-700 transition-all hover:scale-105 ${total < 11 ? 'opacity-75' : ''}">${icons.save}<span class="ml-2">포메이션 저장</span></button><button onclick="clearFormation()" class="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 text-sm transition-all hover:scale-105">${icons.trash}<span class="ml-2">포메이션 초기화</span></button></div></div>${total < 11 ? '<div class="text-center mt-2 text-xs text-orange-600">💡 11명을 모두 배치한 후 저장하세요</div>' : ''}</div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-4 flex items-center justify-between"><span class="flex items-center">${icons.calendar}<span class="ml-2">쿼터 미리보기</span></span><span class="text-sm font-normal text-gray-600">저장됨: ${savedQuarters}/4</span></h3><div class="space-y-4">${[1,2,3,4].map(n => createQuarterPreview(n)).join('')}</div></div></div>`; }
 function createPositionRow(position){ const slots = state.formation[position]; const labels = positionLabels[position] || []; const color = position==='gk'?'bg-purple-500':position==='def'?'bg-green-500':position==='dmf'?'bg-teal-500':position==='cmf'?'bg-blue-500':position==='amf'?'bg-orange-500':'bg-red-500'; return `<div class="row-grid cols-${slots.length} px-4">${slots.map((player,idx)=>`<div class="cell drop-slot" data-position="${position}" data-slot-index="${idx}" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${position}', ${idx})" onclick="openPicker('${position}', ${idx})">${player?`<div class="relative"><div class="w-14 h-14 sm:w-16 sm:h-16 ${color} rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-bold shadow-lg player-chip-field no-select" title="클릭하여 제거 또는 교체" onclick="removePlayerFromSlot('${position}', ${idx}, event)" ontouchstart="openPicker('${position}', ${idx}')"><span class="text-center leading-tight px-1">${player.name}</span></div></div>` : `<div class="w-14 h-14 sm:w-16 sm:h-16 empty-slot rounded-full flex items-center justify-center text-white/60 text-xs cursor-pointer"><span class="text-center">+</span></div>`}<div class="text-white/90 text-xs font-medium mt-1">${labels[idx]||''}</div></div>`).join('')}</div>`; }
 function createQuarterPreview(n){ const q = state.quarters[n-1]; const title = `${n}쿼터`; const playerCount = q ? Object.values(q).flat().filter(Boolean).length : 0; return `<div class="border-2 rounded-lg p-4 ${q ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}"><div class="flex items-center justify-between mb-3"><div class="flex items-center gap-2"><span class="font-semibold text-sm">${title}</span><span class="text-xs px-2 py-1 rounded-full ${q ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}">${q ? `${playerCount}/11명` : '비어있음'}</span></div><div class="flex items-center gap-2"><button class="text-xs px-3 py-1 rounded-lg transition-all ${q?'bg-blue-600 text-white hover:bg-blue-700':'bg-gray-100 text-gray-500 cursor-not-allowed'}" ${q?`onclick="loadQuarter(${n})"`:'disabled'}>${q?'불러오기':'비어있음'}</button><button class="text-xs px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center transition-all" onclick="clearQuarter(${n})">${icons.trash}</button></div></div><div class="mini-pitch relative"><div class="half-line"></div><div class="box top"></div><div class="box bottom"></div>${miniRows(q)}</div></div>`; }
 function miniRows(q){ if (!q) return ''; const positions = ['fw', 'amf', 'cmf', 'dmf', 'def', 'gk']; const yPerc = [8, 24, 40, 56, 72, 88]; return positions.map((pos,i)=>{ const arr = q[pos] || []; const playersInPosition = arr.filter(p => p !== null); if (playersInPosition.length === 0) return ''; const cols = playersInPosition.length; const left = 8, right = 8; const rowStyle = `top:${yPerc[i]}%; left:${left}px; right:${right}px; grid-template-columns: repeat(${cols},1fr); gap: 4px;`; const gkColor = pos === 'gk' ? 'bg-purple-600' : 'bg-blue-600'; return `<div class="mini-row" style="${rowStyle}">${playersInPosition.map(p=> `<div class="mini-badge ${gkColor}" style="font-size: ${cols > 3 ? '9px' : '10px'};">${p.name}</div>`).join('')}</div>`; }).join(''); }
 function createBottomSheet(){ if(!state.ui.pickerOpen) return ''; const pos = state.ui.pickerPos, idx = state.ui.pickerSlot; const inSlot = state.formation[pos][idx]; const assignedIds = new Set(Object.values(state.formation).flat().filter(Boolean).map(p=>p.id)); const q = state.ui.pickerSearch.trim().toLowerCase(); const candidates = state.players.filter(p=>p.isPresent).filter(p=> !assignedIds.has(p.id) || (inSlot && p.id===inSlot.id)).filter(p=> p.name.toLowerCase().includes(q)); return `<div class="fixed inset-0 z-50"><div class="absolute inset-0 bg-black/30" onclick="closePicker()"></div><div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl p-4 pt-3"><div class="flex items-center justify-between mb-3"><div class="text-sm text-gray-600 font-medium">슬롯: <span class="text-blue-600 font-bold">${pos.toUpperCase()} ${idx+1}</span></div><button class="text-gray-500 text-sm hover:text-gray-700" onclick="closePicker()">✕ 닫기</button></div><div class="flex items-center gap-2 mb-4"><input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="이름 검색..." value="${state.ui.pickerSearch}" oninput="setState({ ui:{...state.ui, pickerSearch:this.value} })">${inSlot?`<button class="px-3 py-2 text-xs rounded-lg bg-red-100 hover:bg-red-200 text-red-700" onclick="unassignSlot('${pos}', ${idx}, event)">제거</button>`:''}</div><div class="max-h-[50vh] overflow-auto grid grid-cols-1 gap-2">${candidates.map(p=>`<button class="p-3 rounded-lg border text-left hover:bg-blue-50 hover:border-blue-200 transition-all" onclick="assignToSlot(${p.id})"><div class="flex items-center justify-between"><div class="flex items-center gap-2"><span class="text-sm font-medium">${p.name}</span><span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">${p.position}</span></div><span class="text-xs text-gray-500">쿼터: ${quartersPlayedCount(p.id)}/4</span></div></div></button>`).join('')}${candidates.length===0?`<div class="text-center text-sm text-gray-500 py-8 bg-gray-50 rounded-lg">😔 선택할 수 있는 선수가 없습니다</div>`:''}</div></div></div>`; }
-function createMembers(){ const q = state.playerSearch.trim().toLowerCase(); const list = q ? state.players.filter(p=>p.name.toLowerCase().includes(q)) : state.players; return `<div class="space-y-4 sm:space-y-6"><div class="bg-blue-50 border border-blue-200 p-4 rounded-lg"><h3 class="text-base sm:text-lg font-semibold mb-2 flex items-center">${icons.users}<span class="ml-2">구성원 관리 안내</span></h3><p class="text-sm text-gray-700">구성원 명단은 로컬 <span class="font-semibold">members.json</span> 파일에서 관리됩니다. 변경을 원하시면 파일을 수정해주세요.</p></div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2"><h3 class="text-base sm:text-lg font-semibold flex items-center">${icons.users}<span class="ml-2">출석 체크</span></h3><div class="flex items-center gap-4"><div class="text-sm text-gray-600">📊 출석: <span class="font-semibold text-blue-600">${state.players.filter(p=>p.isPresent).length}명</span></div><button onclick="clearAllAttendance()" class="text-red-500 hover:text-red-700 text-sm font-medium">전체 해제</button></div></div><div class="sm:ml-auto w-full sm:w-64 mb-4"><input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="선수 이름 검색..." value="${state.playerSearch}" oninput="setState({playerSearch:this.value})"></div><div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">${list.map(p=>`<button onclick="toggleAttendance(${p.id})" class="p-3 rounded-lg border-2 text-left transition-all hover:scale-105 ${p.isPresent?'bg-green-50 border-green-300 text-green-800 shadow-md':'bg-gray-50 border-gray-300 text-gray-600 hover:bg-gray-100'}"><div class="flex items-center justify-between mb-1"><span class="font-medium text-sm">${p.name}</span><span class="text-xs px-2 py-1 rounded-full ${p.isPresent?'bg-green-100':'bg-gray-100'}">${p.position}</span></div>${p.isPresent?'<div class="text-xs text-green-600 mt-1 font-medium">✅ 출석</div>':''}</button>`).join('')}</div></div></div>`; }
+function createMembers(){
+  const q = state.playerSearch.trim().toLowerCase();
+  const list = q ? state.players.filter(p=>p.name.toLowerCase().includes(q)) : state.players;
+  const weekLabel = weekRangeLabel(state.weekOffset);
+  return `<div class="space-y-4 sm:space-y-6">
+    <div class="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+      <h3 class="text-base sm:text-lg font-semibold mb-2 flex items-center">${icons.calendar}<span class="ml-2">이번주 참석/포지션 설정</span></h3>
+      <div class="flex flex-wrap items-center gap-2 text-sm">
+        <button onclick="shiftWeek(-1)" class="px-3 py-1 rounded bg-white border">← 이전주</button>
+        <span class="font-semibold text-blue-700">${weekLabel}</span>
+        <button onclick="shiftWeek(1)" class="px-3 py-1 rounded bg-white border">다음주 →</button>
+        <button onclick="copyPreviousWeek()" class="px-3 py-1 rounded bg-blue-600 text-white">지난주 복사</button>
+      </div>
+      <p class="text-xs text-gray-600 mt-2">주차별로 참석 여부와 기본 포지션을 저장합니다. 기록/포메이션 탭에서 즉시 반영됩니다.</p>
+    </div>
+    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
+        <h3 class="text-base sm:text-lg font-semibold flex items-center">${icons.users}<span class="ml-2">출석 체크 + 포지션</span></h3>
+        <div class="flex items-center gap-4"><div class="text-sm text-gray-600">📊 출석: <span class="font-semibold text-blue-600">${state.players.filter(p=>p.isPresent).length}명</span></div><button onclick="clearAllAttendance()" class="text-red-500 hover:text-red-700 text-sm font-medium">전체 해제</button></div>
+      </div>
+      <div class="sm:ml-auto w-full sm:w-64 mb-4"><input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="선수 이름 검색..." value="${state.playerSearch}" oninput="setState({playerSearch:this.value})"></div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">${list.map(p=>`<div class="p-3 rounded-lg border-2 ${p.isPresent?'bg-green-50 border-green-300':'bg-gray-50 border-gray-200'}"><div class="flex items-center justify-between gap-2"><button onclick="toggleAttendance(${p.id})" class="text-left flex-1"><span class="font-medium text-sm">${p.name}</span><div class="text-xs mt-1 ${p.isPresent?'text-green-700':'text-gray-500'}">${p.isPresent?'✅ 참석':'미참석'}</div></button><select class="border rounded px-2 py-1 text-xs" onchange="updatePlayerPosition(${p.id}, this.value)">${['GK','DF','MF','FW'].map(pos=>`<option value="${pos}" ${p.position===pos?'selected':''}>${pos}</option>`).join('')}</select></div></div>`).join('')}</div>
+    </div>
+  </div>`;
+}
 
 let toastTimer=null;
-function toast(msg){ setState({saveStatus:msg}); if(toastTimer) clearTimeout(tostrTimer); toastTimer=setTimeout(()=>setState({saveStatus:""}), 2000); }
+function toast(msg){ setState({saveStatus:msg}); if(toastTimer) clearTimeout(toastTimer); toastTimer=setTimeout(()=>setState({saveStatus:""}), 2000); }
 
 document.addEventListener('DOMContentLoaded', async ()=>{
   console.log("DEBUG: DOM 로드 완료. 초기 렌더링 시작.");
-  await loadLocalMembersJson(); // 로컬 JSON 멤버 목록을 먼저 로드
   loadLocalData();
+  await loadLocalMembersJson(); // 로컬 JSON 멤버 목록 로드(주차 설정 자동 반영)
   render();
 });
 </script>
