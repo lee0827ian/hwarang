@@ -130,8 +130,8 @@ const API_KEY = 'AIzaSyAxrFMgnW6NUu1zElfmPne5tanl0NEvdc0';
 const CLIENT_ID = '564267897779-cjkimjreiscc6h2iobh30tue15o7aik8.apps.googleusercontent.com'; 
 // 사용자님이 제공해주신 구글 시트 ID
 const SPREADSHEET_ID = '1-uK4oHEAPYCVg7H4_7CXgKfbAqlAfrQeIP188jhmSLg';
-const KAKAO_REST_API_KEY = '9ed9356e7ff137d7c475ee8975812d8d'; // 여기에 Kakao REST API Key를 붙여넣으세요. (없으면 주소 기반 링크만 사용)
-const KAKAO_JS_API_KEY = '47eed652b004605d8a8e3e39df268f24'; // 여기에 Kakao JavaScript Key를 붙여넣으세요. (지도 렌더링용)
+const KAKAO_REST_API_KEY = ''; // 여기에 Kakao REST API Key를 붙여넣으세요. (없으면 주소 기반 링크만 사용)
+const KAKAO_JS_API_KEY = ''; // 여기에 Kakao JavaScript Key를 붙여넣으세요. (지도 렌더링용)
 const DISCOVERY_DOCS = ['https://sheets.googleapis.com/$discovery/rest?version=v4'];
 const SCOPES = 'https://www.googleapis.com/auth/spreadsheets'; // 쓰기 권한 스코프
 
@@ -173,6 +173,7 @@ let state = {
   schedules: [],
   selectedMonth: new Date().getMonth() + 1,
   showPastMonths: false,
+  scheduleUnlocked: false,
   kakaoRestKey: "",
   kakaoJsKey: "",
   scheduleInput: `3/28 중산구장(vs 마크) 7-10시
@@ -337,7 +338,7 @@ function ensureKakaoSdkLoaded(){
     }
     const script = document.createElement("script");
     script.id = id;
-    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${key}&autoload=false`;
+    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${key}&autoload=false&libraries=services`;
     script.onload = ()=>window.kakao.maps.load(()=>resolve(true));
     script.onerror = ()=>reject(new Error("카카오 SDK 로드 실패"));
     document.head.appendChild(script);
@@ -370,6 +371,28 @@ function getScheduleMonths(){
   return months.length ? months.sort((a,b)=>a-b) : [state.selectedMonth];
 }
 function getScheduleById(id){ return state.schedules.find(s=>s.id===id) || null; }
+function geocodeWithKakaoServices(query){
+  return new Promise((resolve)=>{
+    if(!window.kakao?.maps?.services || !query){ resolve(null); return; }
+    const geocoder = new kakao.maps.services.Geocoder();
+    geocoder.addressSearch(query, (result, status)=>{
+      if(status !== kakao.maps.services.Status.OK || !result?.length){
+        resolve(null);
+        return;
+      }
+      resolve({
+        lat: parseFloat(result[0].y),
+        lng: parseFloat(result[0].x),
+      });
+    });
+  });
+}
+async function resolveScheduleCoords(schedule){
+  if(schedule?.lat && schedule?.lng) return { lat: schedule.lat, lng: schedule.lng };
+  const query = schedule?.address || schedule?.mapQuery || schedule?.location;
+  const resolved = await geocodeWithKakaoServices(query);
+  return resolved || { lat: 37.6583, lng: 126.8320 };
+}
 function getNextUpcomingSchedule(){
   const today = new Date();
   today.setHours(0,0,0,0);
@@ -383,8 +406,7 @@ async function renderDashboardMap(){
   if(!schedule || !container) return;
   try{
     await ensureKakaoSdkLoaded();
-    const lat = schedule.lat || 37.6583;
-    const lng = schedule.lng || 126.8320;
+    const { lat, lng } = await resolveScheduleCoords(schedule);
     const map = new kakao.maps.Map(container, {
       center: new kakao.maps.LatLng(lat, lng),
       level: 5
@@ -404,8 +426,7 @@ async function openMapModal(scheduleId){
   if(!container) return;
   try{
     await ensureKakaoSdkLoaded();
-    const lat = schedule.lat || 37.5665;
-    const lng = schedule.lng || 126.9780;
+    const { lat, lng } = await resolveScheduleCoords(schedule);
     const map = new kakao.maps.Map(container, {
       center: new kakao.maps.LatLng(lat, lng),
       level: 4
@@ -685,7 +706,24 @@ function copyPreviousWeek(){
   setState({ weeklyConfig, players, saveStatus:'✅ 지난주 설정을 복사했습니다' });
   saveLocalData();
 }
-function setActiveTab(tab){ setState({activeTab:tab}); }
+function requestScheduleAccess(){
+  if(state.scheduleUnlocked) return true;
+  const pw = window.prompt("일정 수정 비밀번호를 입력하세요");
+  if(pw === "1234"){
+    setState({ scheduleUnlocked: true, activeTab: 'schedule' });
+    toast("✅ 일정 수정 권한이 활성화되었습니다");
+    return true;
+  }
+  toast("⛔ 비밀번호가 올바르지 않습니다");
+  return false;
+}
+function setActiveTab(tab){
+  if(tab === 'schedule'){
+    requestScheduleAccess();
+    return;
+  }
+  setState({activeTab:tab});
+}
 function getPresentPlayers(){ return state.players.filter(p=>p.isPresent); }
 
 // --- MATCH ---
@@ -817,7 +855,7 @@ function createDashboard(){
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
       <div class="flex items-center justify-between gap-2 mb-3">
         <h3 class="font-semibold text-lg">2025-26 일정</h3>
-        <button onclick="setState({activeTab:'schedule'})" class="text-sm text-blue-600 underline">일정관리</button>
+        <button onclick="requestScheduleAccess()" class="text-sm text-blue-600 underline">일정관리</button>
       </div>
       <div class="text-sm text-gray-600 mb-2">오늘 날짜: <span class="font-semibold text-gray-900">${todayLabel}</span></div>
       <div class="flex gap-2 overflow-x-auto pb-2">${months.map(m=>`<button onclick="setState({selectedMonth:${m}})" class="px-3 py-1 rounded-full text-sm border ${m===selectedMonth?'bg-blue-600 text-white border-blue-600':'bg-gray-50 text-gray-700 border-gray-200'}" ${m!==selectedMonth?'disabled title=\"대시보드에서는 현재 월만 표시\"':''}>${m}월</button>`).join('')}</div>
@@ -825,12 +863,12 @@ function createDashboard(){
       <div class="mt-3 border rounded-lg p-3 bg-gray-50">
         <div class="flex items-center justify-between">
           <div class="font-semibold">첫 페이지 카카오 지도 (다가오는 1경기)</div>
-          <button onclick="setState({activeTab:'schedule'})" class="text-xs text-blue-600 underline">일정 수정</button>
+          <button onclick="requestScheduleAccess()" class="text-sm font-semibold text-blue-600 underline">일정 수정</button>
         </div>
-        ${nextUpcoming ? `<div class="text-sm text-gray-700 mt-2">${nextUpcoming.month}/${nextUpcoming.day} · ${nextUpcoming.location}<br><span class="text-xs text-gray-500">${nextUpcoming.address || '주소 미지정'}</span></div><div id="dashboard-kakao-map-canvas" class="w-full h-64 rounded-lg border mt-2"></div>${nextUpcoming.mapUrl ? `<a href="${nextUpcoming.mapUrl}" target="_blank" class="text-blue-600 underline text-xs mt-2 inline-block">카카오맵에서 크게보기</a>`:''}<div class="text-[11px] text-gray-500 mt-2">지도 표시가 안되면 아래 키 입력란에 JavaScript 키를 붙여넣어 주세요.</div>` : `<div class="text-sm text-gray-500 mt-2">다가오는 일정이 없습니다.</div>`}
+        ${nextUpcoming ? `<div class="text-base sm:text-lg font-semibold text-gray-800 mt-2">${nextUpcoming.month}/${nextUpcoming.day} / ${nextUpcoming.location} / ${nextUpcoming.time}</div><div class="text-sm sm:text-base text-gray-600 mt-1">${nextUpcoming.address || '주소 미지정'}</div><div id="dashboard-kakao-map-canvas" class="w-full h-64 rounded-lg border mt-2"></div>${nextUpcoming.mapUrl ? `<a href="${nextUpcoming.mapUrl}" target="_blank" class="text-blue-600 underline text-sm mt-2 inline-block">카카오맵에서 크게보기</a>`:''}` : `<div class="text-sm text-gray-500 mt-2">다가오는 일정이 없습니다.</div>`}
       </div>
       <div class="space-y-3 mt-3">
-        ${days.map(day=>`<div class="border rounded-lg overflow-hidden"><div class="px-4 py-2 bg-gray-50 font-semibold">${day}</div>${byDate[day].map(sch=>{const attendees = state.players.filter(p=>sch.attendees.includes(p.id)); const isHighlighted = sch.id === nextUpcomingId; return `<div class="px-4 py-3 border-t ${isHighlighted?'bg-yellow-50':'bg-white'}"><div class="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center text-sm"><div class="font-semibold">${sch.time}</div><div class="sm:col-span-2 text-gray-700">${sch.location}<div class="text-xs text-gray-500">${sch.address || '주소 미지정'}</div></div><div class="font-medium">${sch.opponent}</div><div class="flex gap-2 sm:justify-end"><button onclick="setState({activeTab:'schedule'})" class="px-2 py-1 rounded border text-xs">참석 ${attendees.length}명</button><button onclick="openMapModal('${sch.id}')" class="px-2 py-1 rounded border text-xs">지도</button></div></div></div>`;}).join('')}</div>`).join('')}
+        ${days.map(day=>`<div class="border rounded-lg overflow-hidden"><div class="px-4 py-2 bg-gray-50 font-semibold">${day}</div>${byDate[day].map(sch=>{const attendees = state.players.filter(p=>sch.attendees.includes(p.id)); const isHighlighted = sch.id === nextUpcomingId; return `<div class="px-4 py-3 border-t ${isHighlighted?'bg-yellow-50':'bg-white'}"><div class="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center text-sm"><div class="font-semibold">${sch.time}</div><div class="sm:col-span-2 text-gray-700">${sch.location}<div class="text-xs text-gray-500">${sch.address || '주소 미지정'}</div></div><div class="font-medium">${sch.opponent}</div><div class="flex gap-2 sm:justify-end"><button onclick="requestScheduleAccess()" class="px-2 py-1 rounded border text-xs">참석 ${attendees.length}명</button><button onclick="openMapModal('${sch.id}')" class="px-2 py-1 rounded border text-xs">지도</button></div></div></div>`;}).join('')}</div>`).join('')}
         ${!days.length ? `<div class="text-sm text-gray-500 py-8 text-center">선택된 월 일정이 없습니다.</div>` : ''}
       </div>
     </div>
