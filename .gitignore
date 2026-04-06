@@ -1,1 +1,4 @@
+cat << 'EOF' > .gitignore
 config.local.js
+config.firebase.js
+EOF
