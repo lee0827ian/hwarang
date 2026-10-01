@@ -42,6 +42,12 @@
     </div>
   </div>
 
+  <sc-if value="{{ flash }}">
+  <div style="max-width:1120px; margin:0 auto; padding:{{ ui.mainPad }};">
+    <div onClick="{{ closeFlash }}" style="background:#141414; color:#FFFFFF; border-radius:12px; padding:13px 16px; font-size:14px; font-weight:700; cursor:pointer;">{{ flash }}</div>
+  </div>
+  </sc-if>
+
   <sc-if value="{{ showNotice }}">
   <div style="max-width:1120px; margin:0 auto; padding:{{ ui.mainPad }};">
     <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:28px 18px; text-align:center;">
@@ -84,6 +90,7 @@
               <a href="{{ n.href }}" target="{{ n.target }}" rel="noopener" onClick="{{ n.onClick }}" style="min-height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:#F6F6F4; color:#141414; font-size:13px; font-weight:800;">{{ n.label }}</a>
             </sc-for>
           </div>
+          <div onClick="{{ shareKakao }}" style="margin-top:8px; min-height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:#FEE500; color:#191600; font-size:13px; font-weight:800; cursor:pointer;">카톡방에 참석 투표 올리기</div>
         </div>
 
         <div style="padding:{{ ui.cardPad }}; border-top:1px solid #F0EFEB; background:#FFFFFF;">
@@ -523,6 +530,9 @@
             <div onClick="{{ closePicker }}" style="width:36px; height:36px; border-radius:50%; background:#F3F3F0; color:#5F5F5F; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:800; cursor:pointer;">×</div>
           </div>
           <div style="font-size:13px; color:#5F5F5F; margin-top:4px;">선택한 이름은 이 기기에 저장돼요. 다른 사람 이름은 고르지 말아주세요.</div>
+          <sc-if value="{{ pickerNote }}">
+            <div style="font-size:13px; font-weight:800; color:#A3190B; margin-top:6px;">{{ pickerNote }}</div>
+          </sc-if>
           <input onInput="{{ onQuery }}" placeholder="이름 검색" style="width:100%; margin-top:12px; padding:12px 14px; border-radius:12px; border:1.5px solid #E2E1DC; background:#F6F6F4; font-family:'Pretendard'; font-size:15px; outline:none;">
         </div>
         <div style="overflow-y:auto; padding:14px 20px 24px; display:grid; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); gap:8px;">

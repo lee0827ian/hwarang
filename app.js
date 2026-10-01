@@ -126,8 +126,13 @@ class HwarangApp {
     this.memberQuery = '';
     let me = null;
     try { me = Number(localStorage.getItem('hwarang_me')) || null; } catch (e) {}
+    // 카톡 공유 카드의 참석 · 미정 · 불참을 눌러 들어온 경우(?s=일정 id&r=응답). 데이터를 읽은 뒤 한 번만 반영하고,
+    // 새로고침해도 다시 반영되지 않도록 주소에서는 바로 지운다.
+    const qs = new URLSearchParams(location.search);
+    this.pendingRsvp = qs.get('s') && LABEL[qs.get('r')] ? { id: qs.get('s'), status: qs.get('r') } : null;
+    if (qs.has('s') || qs.has('r')) history.replaceState(null, '', location.pathname);
     this.state = {
-      tab: 'home', me, q: 0,
+      tab: 'home', me, q: 0, flash: '',
       pickerOpen: false, rsvpEditing: false, mapOpen: false, rosterOpen: null,
       guestForm: null,
       draft: null, draftFor: null, sel: null, dirty: false, savedAt: 0, fmError: '',
@@ -187,7 +192,58 @@ class HwarangApp {
   }
   fail() { this.loadError = '데이터를 불러오지 못했어요. 잠시 후 새로고침해 주세요.'; this.render(); }
   // 글자를 입력하는 창이 열려 있을 때는 다시 그리지 않는다(입력 중인 글이 지워지므로). 창을 닫으면 최신 데이터로 그려진다.
-  dataChanged() { if (this.state.pickerOpen || this.state.schedForm || this.state.memberForm || this.state.guestForm) return; this.render(); }
+  dataChanged() {
+    this.applyPendingRsvp();
+    if (this.state.pickerOpen || this.state.schedForm || this.state.memberForm || this.state.guestForm) return;
+    this.render();
+  }
+
+  // ── 카톡 공유 카드 ──
+  // 화면 위쪽 안내 한 줄. 6초 뒤 사라진다
+  flash(text) {
+    clearTimeout(this._flashTimer);
+    this.setState({ flash: text });
+    this._flashTimer = setTimeout(() => this.setState({ flash: '' }), 6000);
+  }
+  pendingLabel() {
+    const p = this.pendingRsvp, s = p && (this.schedules || []).find(x => x.id === p.id);
+    if (!s) return '';
+    const d = new Date(s.date + 'T00:00:00');
+    return (d.getMonth() + 1) + '.' + d.getDate() + ' 경기';
+  }
+  // 카드에서 누른 응답을 저장한다. 이름을 아직 안 골랐으면 이름 선택 창을 열고, 고른 뒤에 다시 불린다.
+  applyPendingRsvp() {
+    const p = this.pendingRsvp;
+    if (!p || this.members === null || this.schedules === null) return;
+    const s = this.schedules.find(x => x.id === p.id), when = this.pendingLabel();
+    if (!s || s.date < localDate()) {
+      this.pendingRsvp = null;
+      this.flash(s ? when + '는 이미 지나서 응답을 바꿀 수 없어요.' : '찾을 수 없는 일정이에요.');
+      return;
+    }
+    if (!this.members.some(m => m.id === this.state.me)) { this.setState({ tab: 'home', pickerOpen: true }); return; }
+    this.pendingRsvp = null;
+    this.setRsvp(s.id, p.status);
+    this.setState({ tab: 'home', rsvpEditing: false });
+    this.flash(when + ' "' + LABEL[p.status] + '"으로 저장했어요.');
+  }
+  // 단체방에 올릴 카드: 참석 · 미정 · 불참 항목마다 응답이 담긴 주소를 건다
+  shareToKakao(s) {
+    const d = new Date(s.date + 'T00:00:00');
+    const base = location.origin + location.pathname;
+    const link = query => ({ mobileWebUrl: base + query, webUrl: base + query });
+    const title = (d.getMonth() + 1) + '.' + d.getDate() + ' (' + DOW[d.getDay()] + ')' + (s.time ? ' ' + s.time : '') + ' · ' + (s.venue || '구장 미정');
+    loadKakaoSdk().then(() => window.Kakao.Share.sendDefault({
+      objectType: 'list',
+      headerTitle: title,
+      headerLink: link(''),
+      contents: ['attend', 'maybe', 'absent'].map(k => ({
+        title: LABEL[k], description: '눌러서 응답하기',
+        link: link('?s=' + encodeURIComponent(s.id) + '&r=' + k)
+      })),
+      buttons: [{ title: '참석 현황 보기', link: link('') }]
+    })).catch(() => alert('카카오톡 공유를 열지 못했어요. 잠시 후 다시 눌러 주세요.'));
+  }
 
   // ── 쓰기 ──
   setRsvp(scheduleId, status) {
@@ -350,7 +406,7 @@ class HwarangApp {
     // ── 이름 선택 창 ──
     const pickList = sorted.map(m => ({
       name: m.name, key: keyOf(m), bg: m === me ? '#141414' : '#FFFFFF', fg: m === me ? '#FFFFFF' : '#141414', bd: m === me ? '#141414' : '#E2E1DC',
-      onClick: () => { try { localStorage.setItem('hwarang_me', m.id); } catch (e) {} this.setState({ me: m.id, pickerOpen: false, rsvpEditing: true }); }
+      onClick: () => { try { localStorage.setItem('hwarang_me', m.id); } catch (e) {} this.setState({ me: m.id, pickerOpen: false, rsvpEditing: true }); this.applyPendingRsvp(); }
     }));
 
     // ── 다가오는 경기 · 내 참석 · 참석 현황 ──
@@ -617,7 +673,10 @@ class HwarangApp {
       // 이름 선택 창
       pickerOpen: st.pickerOpen, pickList, pickEmpty: String(!pickList.length),
       openPicker: () => this.setState({ pickerOpen: true }),
-      closePicker: () => this.setState({ pickerOpen: false }),
+      closePicker: () => { this.pendingRsvp = null; this.setState({ pickerOpen: false }); },
+      pickerNote: this.pendingRsvp && this.pendingLabel() ? '이름을 고르면 ' + this.pendingLabel() + ' "' + LABEL[this.pendingRsvp.status] + '"이 바로 저장돼요.' : '',
+      flash: st.flash, closeFlash: () => this.setState({ flash: '' }),
+      shareKakao: () => this.shareToKakao(next),
       stop: e => e.stopPropagation(),
       onQuery: e => filterByQuery('[data-pick]', 'pick', e.target.value, 'pickEmpty', 'flex')
     };
