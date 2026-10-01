@@ -22,11 +22,13 @@
 
 - `hw_team/roster`: 구성원 명단. `members: [{ id, name, pos, admin }]`
 - `hw_schedules/{일정}`: 일정 한 건. `date`, `time`, `venue`, `address`, `opponent`, `lat`, `lng`,
-  참석 응답 `rsvp: { 구성원 id: attend | maybe | absent }`, 포메이션 `quarters: [{ 자리: 구성원 id } × 4쿼터]`
+  참석 응답 `rsvp: { 구성원 id: attend | maybe | absent }`, 용병 `guests: { 용병 id: { name, by, at } }`,
+  포메이션 `quarters: [{ 자리: 구성원 id 또는 용병 id } × 4쿼터]`
 
 ## 권한
 
 로그인이 없다. 이름은 처음 한 번 명단에서 고르고 기기에 저장된다.
+용병은 이름을 고른 사람이면 누구나 다음 경기에 추가할 수 있고, 빼는 것은 데려온 사람과 운영진만 한다.
 명단에서 `admin`인 사람(운영진)에게만 포메이션 편집, 일정 추가·수정·삭제, 구성원 수정 버튼이 보인다.
 지금은 서버 규칙이 열려 있어 화면 밖에서도 쓸 수 있다. 운영진 비밀번호를 도입하면 규칙을 좁힌다.
 

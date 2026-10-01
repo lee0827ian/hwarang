@@ -125,7 +125,7 @@
         <div style="display:flex; align-items:baseline; gap:6px; margin-top:12px;">
           <span style="font-size:48px; font-weight:800; color:#C71F10; line-height:1; letter-spacing:-1px;">{{ cnt.attend }}</span>
           <span style="font-size:15px; font-weight:800;">명 참석</span>
-          <span style="font-size:13px; color:#5F5F5F;">/ 전체 {{ cnt.total }}명</span>
+          <span style="font-size:13px; color:#5F5F5F;">/ 전체 {{ cnt.total }}명{{ cnt.guestNote }}</span>
         </div>
         <div style="position:relative; margin-top:14px;">
           <div style="display:flex; height:12px; border-radius:6px; overflow:hidden; background:#EFEFEB;">
@@ -144,7 +144,23 @@
           </div>
           <span style="font-weight:700; color:#141414;">| 최소 {{ minPlayers }}명</span>
         </div>
-        <div onClick="{{ toggleRoster }}" style="margin-top:14px; min-height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:#F6F6F4; font-size:13px; font-weight:800; cursor:pointer;">{{ rosterLabel }}</div>
+        <div style="display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; margin-top:14px;">
+          <div onClick="{{ toggleRoster }}" style="min-height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:#F6F6F4; font-size:13px; font-weight:800; cursor:pointer;">{{ rosterLabel }}</div>
+          <div onClick="{{ openGuest }}" style="min-height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:#F6F0DC; color:#3D2F08; font-size:13px; font-weight:800; cursor:pointer;">용병 추가</div>
+        </div>
+        <sc-if value="{{ guestFormOpen }}">
+          <div style="margin-top:10px; padding:12px; border-radius:12px; background:#F6F0DC;">
+            <div style="font-size:13px; font-weight:700; color:#3D2F08;">{{ myName }}님이 데려오는 용병 이름을 넣어 주세요.</div>
+            <div style="display:flex; gap:8px; margin-top:8px;">
+              <input id="gf-name" value="{{ guestForm.name }}" onKeydown="{{ onGuestKey }}" maxlength="12" placeholder="용병 이름" style="flex:1; min-width:0; padding:11px 12px; border-radius:10px; border:1.5px solid #D8C07A; background:#FFFFFF; font-family:inherit; font-size:15px; font-weight:600; color:#141414; outline:none;">
+              <div onClick="{{ saveGuest }}" style="flex-shrink:0; min-height:44px; padding:0 16px; display:flex; align-items:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:#141414; color:#FFFFFF;">추가</div>
+              <div onClick="{{ cancelGuest }}" style="flex-shrink:0; min-height:44px; padding:0 12px; display:flex; align-items:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:#FFFFFF; color:#141414; border:1.5px solid #D8C07A;">취소</div>
+            </div>
+            <sc-if value="{{ guestForm.error }}">
+              <div style="font-size:13px; font-weight:700; color:#A3190B; margin-top:8px;">{{ guestForm.error }}</div>
+            </sc-if>
+          </div>
+        </sc-if>
         <sc-if value="{{ rosterOpen }}">
           <div style="display:flex; flex-direction:column; gap:14px; margin-top:14px;">
             <sc-for list="{{ groups }}" as="g">
@@ -152,7 +168,7 @@
                 <span style="font-size:13px; font-weight:800; color:{{ g.color }}; padding-top:5px;">{{ g.label }} {{ g.n }}</span>
                 <div style="display:flex; flex-wrap:wrap; gap:6px;">
                   <sc-for list="{{ g.names }}" as="p">
-                    <span style="font-size:14px; padding:5px 11px; border-radius:9px; background:{{ p.bg }}; color:{{ p.fg }}; font-weight:{{ p.weight }}; border:1px solid {{ p.bd }};">{{ p.name }}</span>
+                    <span onClick="{{ p.onClick }}" style="cursor:{{ p.cursor }}; font-size:14px; padding:5px 11px; border-radius:9px; background:{{ p.bg }}; color:{{ p.fg }}; font-weight:{{ p.weight }}; border:1px solid {{ p.bd }};">{{ p.name }}</span>
                   </sc-for>
                 </div>
               </div>
@@ -411,7 +427,7 @@
                     <div style="width:{{ s.barM }}; background:#D8C07A;"></div>
                     <div style="width:{{ s.barX }}; background:#A8A8A2;"></div>
                   </div>
-                  <div style="font-size:13px; color:#5F5F5F;">참석 {{ s.a }} · 미정 {{ s.m }} · 불참 {{ s.x }} · 미응답 {{ s.none }}</div>
+                  <div style="font-size:13px; color:#5F5F5F;">참석 {{ s.a }}{{ s.guestNote }} · 미정 {{ s.m }} · 불참 {{ s.x }} · 미응답 {{ s.none }}</div>
                   <sc-if value="{{ s.canAnswer }}">
                     <div style="display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px;">
                       <sc-for list="{{ s.buttons }}" as="b">
