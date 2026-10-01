@@ -122,7 +122,7 @@
 <body>
 <div id="root"></div>
 
-<script src="config.local.js"></script>
+<script src="config.firebase.js"></script>
 <script>
 // --- Google Sheets Configuration ---
 const APP_CONFIG = window.APP_CONFIG || {};
@@ -237,6 +237,21 @@ function sanitizeName(raw){
   s = s.replace(/[^\p{L}\p{N}\s._-]/gu, "");
   return s.trim();
 }
+function getChosung(str){
+  const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+  return str.split('').map(c=>{
+    const code = c.charCodeAt(0) - 0xAC00;
+    if(code < 0 || code > 11171) return c;
+    return CHOSUNG[Math.floor(code / 588)];
+  }).join('');
+}
+function matchesSearch(name, q){
+  if(!q) return true;
+  if(name.includes(q)) return true;
+  if(getChosung(name).includes(q)) return true;
+  return false;
+}
+
 function safeJSON(s, fallback){ try{ return JSON.parse(s); }catch{ return fallback; } }
 function deepCopyFormation(f){ return JSON.parse(JSON.stringify(f)); }
 
@@ -650,7 +665,7 @@ function mergeSchedulesWithCloudAttendance(baseSchedules, cloudRows){
   return (baseSchedules || []).map(s=>{
     const cloud = cloudMap[s.id];
     if(!cloud) return s;
-    return { ...s, attendees: Array.isArray(cloud.attendees) ? cloud.attendees : s.attendees };
+    return { ...s, attendees: Array.isArray(cloud.attendees) ? cloud.attendees : s.attendees, quarters: cloud.quarters || [null,null,null,null] };
   });
 }
 async function loadCloudAttendance(){
@@ -671,6 +686,17 @@ async function syncAllSchedulesToCloud(){
     updatedAt: new Date().toISOString(),
   }, { merge:true }));
   await Promise.all(jobs);
+}
+async function syncPlayerPositionsToCloud(){
+  if(!firestoreDb) return;
+  const positions = {};
+  state.players.forEach(p=>{ positions[p.id] = p.position || "MF"; });
+  await firestoreDb.collection("player_positions").doc("positions").set({ positions, updatedAt: new Date().toISOString() });
+}
+async function loadCloudPlayerPositions(){
+  if(!firestoreDb) return null;
+  const doc = await firestoreDb.collection("player_positions").doc("positions").get();
+  return doc.exists ? doc.data().positions : null;
 }
 async function syncScheduleAttendanceToCloud(schedule){
   const col = getAttendanceCollection();
@@ -701,15 +727,26 @@ async function initFirebaseSync(){
     }
     firestoreDb = firebase.firestore();
 
-    const cloudRows = await loadCloudAttendance();
-    if(cloudRows.length){
-      const merged = mergeSchedulesWithCloudAttendance(state.schedules, cloudRows);
-      setState({ schedules: merged, cloudSyncEnabled: true, cloudSyncStatus: `Firebase 동기화 연결됨 (${FIREBASE_CONFIG.projectId})` });
-      saveLocalData();
-    } else {
-      await syncAllSchedulesToCloud();
-      setState({ cloudSyncEnabled: true, cloudSyncStatus: `Firebase 동기화 시작됨 (${FIREBASE_CONFIG.projectId})` });
+    const cloudPositions = await loadCloudPlayerPositions();
+      if(cloudPositions){
+      const players = state.players.map(p=>({ ...p, position: cloudPositions[p.id] || p.position || "MF" }));
+      setState({ players });
     }
+    const col = getAttendanceCollection();
+    col.onSnapshot((snapshot) => {
+      const cloudRows = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      if(cloudRows.length){
+        const merged = mergeSchedulesWithCloudAttendance(state.schedules, cloudRows);
+        setState({ schedules: merged, cloudSyncEnabled: true, cloudSyncStatus: `Firebase 동기화 연결됨 (${FIREBASE_CONFIG.projectId})` });
+        saveLocalData();
+        if(state.selectedScheduleId){
+          handleScheduleChange(state.selectedScheduleId);
+        }
+      } else {
+        syncAllSchedulesToCloud();
+        setState({ cloudSyncEnabled: true, cloudSyncStatus: `Firebase 동기화 시작됨 (${FIREBASE_CONFIG.projectId})` });
+      }
+    });
   } catch(err){
     console.error('Firebase 동기화 초기화 실패', err);
     setState({ cloudSyncStatus: 'Firebase 동기화 실패 - 로컬 모드로 동작' });
@@ -803,7 +840,12 @@ function clearAllAttendance(){
 function updatePlayerPosition(id, position){
   const players = state.players.map(p=> p.id===id ? {...p, position} : p );
   persistWeeklyPlayers(players);
+  if(state.cloudSyncEnabled) syncPlayerPositionsToCloud().catch(e=>console.error(e));
 }
+
+
+
+
 function shiftWeek(delta){
   const weekOffset = state.weekOffset + delta;
   const key = weekKeyFromOffset(weekOffset);
@@ -844,6 +886,15 @@ function setActiveTab(tab){
     return;
   }
   setState({activeTab:tab});
+}
+function handleScheduleChange(id){
+  const emptyFormation = { gk:[null], def:[null,null,null,null], dmf:[null,null], cmf:[null,null,null], amf:[null,null], fw:[null] };
+  const cloudData = state.schedules.find(s => s.id === id);
+  setState({
+    selectedScheduleId: id,
+    quarters: cloudData?.quarters || [null,null,null,null],
+    formation: cloudData?.quarters?.[state.currentQuarter-1] || emptyFormation
+  });
 }
 function getPresentPlayers(){
   const selected = getSelectedSchedule();
@@ -924,10 +975,53 @@ function downloadBackup(){
 }
 
 // --- QUARTERS ---
-function setCurrentQuarter(n){ setState({ currentQuarter:n }); saveLocalData(); }
-function saveCurrentFormation(){ const copy = deepCopyFormation(state.formation); const idx = state.currentQuarter - 1; const quarters = state.quarters.slice(); quarters[idx] = copy; const nextQuarter = state.currentQuarter >= 4 ? 1 : state.currentQuarter + 1; setState({ quarters, currentQuarter: nextQuarter, saveStatus:`💾 ${idx + 1}쿼터 포메이션이 저장되었습니다 → ${nextQuarter}쿼터로 이동` }); setTimeout(()=>setState({saveStatus:""}),2500); }
+function saveCurrentFormation(){
+  const total = Object.values(state.formation).flat().filter(Boolean).length;
+  if(total !== 11) {
+    toast("⚠️ 11명을 정확히 배치해야 저장할 수 있습니다.");
+    return;
+  }
+  
+  const copy = deepCopyFormation(state.formation);
+  const idx = state.currentQuarter - 1;
+  const quarters = state.quarters.slice();
+  quarters[idx] = copy;
+  const nextQuarter = state.currentQuarter >= 4 ? 1 : state.currentQuarter + 1;
+  
+  const sel = getSelectedSchedule();
+  const updatedSchedules = state.schedules.map(s => s.id === sel?.id ? { ...s, quarters: quarters } : s);
+  
+  setState({ quarters, currentQuarter: nextQuarter, schedules: updatedSchedules, saveStatus:`💾 ${idx + 1}쿼터가 저장되었습니다 → ${nextQuarter}쿼터로 이동` });
+  
+  saveLocalData();
+  
+  setTimeout(()=>setState({saveStatus:""}),2500);
+  
+if(state.cloudSyncEnabled && sel){
+    const col = getAttendanceCollection();
+    if(col) col.doc(sel.id).set({ quarters: quarters }, { merge:true });
+  }
+}
+
 function loadQuarter(n){ const q = state.quarters[n-1]; if(!q) return; setState({ formation: deepCopyFormation(q), currentQuarter:n, saveStatus:`📋 ${n}쿼터 포메이션을 불러왔습니다` }); setTimeout(()=>setState({saveStatus:""}),1500); }
-function clearQuarter(n){ const quarters = state.quarters.slice(); quarters[n-1] = null; setState({ quarters, saveStatus:`🗑️ ${n}쿼터가 삭제되었습니다` }); setTimeout(()=>setState({saveStatus:""}),1500); }
+function clearQuarter(n){ 
+  const quarters = state.quarters.slice(); 
+  quarters[n-1] = null; 
+  const sel = getSelectedSchedule();
+  const updatedSchedules = state.schedules.map(s => s.id === sel?.id ? { ...s, quarters: quarters } : s);
+  const emptyFormation = { gk: [null], def: [null,null,null,null], dmf: [null,null], cmf: [null,null,null], amf: [null,null], fw: [null] };
+  setState({ 
+    quarters, schedules: updatedSchedules, currentQuarter: n,
+    formation: state.currentQuarter === n ? emptyFormation : state.formation,
+    saveStatus:`🗑️ ${n}쿼터가 삭제되었습니다` 
+  }); 
+  setTimeout(()=>setState({saveStatus:""}),1500);
+  if(state.cloudSyncEnabled && sel){
+    const col = getAttendanceCollection();
+    if(col) col.doc(sel.id).set({ quarters: quarters }, { merge:true });
+  }
+  saveLocalData();
+}
 function clearFormation(){ const emptyFormation = { gk: [null], def: [null,null,null,null], dmf: [null,null], cmf: [null,null,null], amf: [null,null], fw: [null] }; setState({ formation: emptyFormation, saveStatus:"🧹 현재 포메이션이 초기화되었습니다" }); setTimeout(()=>setState({saveStatus:""}),1500); }
 function getSavedQuartersCount(){ return state.quarters.filter(q => q !== null).length; }
 function quartersPlayedCount(playerId){ return state.quarters.reduce((acc,q)=>{ if(!q) return acc; const found = Object.values(q).flat().some(p=>p && p.id===playerId); return acc + (found?1:0); },0); }
@@ -940,7 +1034,7 @@ function handleDragOver(ev){ ev.preventDefault(); ev.dataTransfer.dropEffect="mo
 function handleDragLeave(ev){ ev.currentTarget.classList.remove("drag-over"); }
 function handleDrop(ev, position, slotIndex){ ev.preventDefault(); ev.currentTarget.classList.remove("drag-over"); const dragged = state.draggedPlayer; if(!dragged) return; const count = fieldCount(state.formation); const already = Object.values(state.formation).flat().some(p=>p && p.id===dragged.id); if(!already && count>=11){ toast("⚠️ 필드에는 최대 11명만 배치 가능합니다"); return; } if(state.formation[position][slotIndex] !== null) return; const formation = {...state.formation}; Object.keys(formation).forEach(k=>{ formation[k] = formation[k].map(x => x && x.id===dragged.id ? null : x); }); formation[position] = [...formation[position]]; formation[position][slotIndex] = dragged; setState({ formation }); state.draggedPlayer=null; }
 function removePlayerFromSlot(pos, idx, e){ if(e){ e.stopPropagation(); e.preventDefault(); } const formation = {...state.formation}; formation[pos] = [...formation[pos]]; formation[pos][idx]=null; setState({ formation, saveStatus:"✅ 선수가 제거되었습니다" }); setTimeout(()=>setState({saveStatus:""}),1000); }
-function openPicker(position, slotIndex){ setState({ ui:{ pickerOpen:true, pickerPos:position, pickerSlot:slotIndex, pickerSearch:"" } }); }
+function openPicker(position, slotIndex){ state = {...state, ui:{ ...state.ui, pickerOpen:true, pickerPos:position, pickerSlot:slotIndex, pickerSearch:"" }}; render(); }
 function closePicker(){ setState({ ui:{...state.ui, pickerOpen:false, pickerPos:null, pickerSlot:null, pickerSearch:""} }); }
 function assignToSlot(playerId){ const {pickerPos:pos, pickerSlot:idx} = state.ui; if(pos==null) return; const formation = {...state.formation}; const count = fieldCount(formation); const already = Object.values(formation).flat().some(p=>p && p.id===playerId); if(!already && count>=11){ toast("⚠️ 필드에는 최대 11명만 배치 가능합니다"); return; } const player = state.players.find(p=>p.id===playerId); Object.keys(formation).forEach(k=>{ formation[k] = formation[k].map(x => x && x.id===playerId ? null : x); }); formation[pos] = [...formation[pos]]; formation[pos][idx] = player; setState({ formation }); closePicker(); }
 function unassignSlot(pos, idx, e){ if(e){ e.stopPropagation(); e.preventDefault(); } const formation = {...state.formation}; formation[pos] = [...formation[pos]]; formation[pos][idx]=null; setState({ formation }); }
@@ -999,7 +1093,7 @@ function createDashboard(){
         ${nextUpcoming ? `<div class="text-base sm:text-lg font-semibold text-gray-800 mt-2">${formatScheduleHeadline(nextUpcoming)}</div><div class="text-sm sm:text-base text-gray-600 mt-1">${nextUpcoming.address || '주소 미지정'}</div><div id="dashboard-kakao-map-canvas" class="w-full h-64 rounded-lg border mt-2"></div>${nextUpcoming.mapUrl ? `<a href="${nextUpcoming.mapUrl}" target="_blank" class="text-blue-600 underline text-sm mt-2 inline-block">카카오맵에서 크게보기</a>`:''}` : `<div class="text-sm text-gray-500 mt-2">다가오는 일정이 없습니다.</div>`}
       </div>
       <div class="space-y-3 mt-3">
-        ${days.map(day=>`<div class="border rounded-lg overflow-hidden"><div class="px-4 py-2 bg-gray-50 font-semibold">${day}</div>${byDate[day].map(sch=>{const attendees = state.players.filter(p=>sch.attendees.includes(p.id)); const isHighlighted = sch.id === nextUpcomingId; return `<div class="px-4 py-3 border-t ${isHighlighted?'bg-yellow-50':'bg-white'}"><div class="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center text-sm"><div class="font-semibold">${sch.time}</div><div class="sm:col-span-2 text-gray-700">${sch.location}<div class="text-xs text-gray-500">${sch.address || '주소 미지정'}</div></div><div class="font-medium">${sch.opponent}</div><div class="flex gap-2 sm:justify-end"><button onclick="setState({activeTab:'attendance', selectedScheduleId:'${sch.id}'})" class="px-2 py-1 rounded border text-xs">참석 ${attendees.length}명</button><button onclick="openMapModal('${sch.id}')" class="px-2 py-1 rounded border text-xs">지도</button></div></div></div>`;}).join('')}</div>`).join('')}
+        ${days.map(day=>`<div class="border rounded-lg overflow-hidden"><div class="px-4 py-2 bg-gray-50 font-semibold">${day}</div>${byDate[day].map(sch=>{const attendees = state.players.filter(p=>sch.attendees.includes(p.id)); const isHighlighted = sch.id === nextUpcomingId; return `<div class="px-4 py-3 border-t ${isHighlighted?'bg-yellow-50':'bg-white'}"><div class="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center text-sm"><div class="font-semibold">${sch.time}</div><div class="sm:col-span-2 text-gray-700">${sch.location}<div class="text-xs text-gray-500">${sch.address || '주소 미지정'}</div></div><div class="font-medium">${sch.opponent}</div><div class="flex gap-2 sm:justify-end"><button onclick="handleScheduleChange('${sch.id}'); setActiveTab('attendance');" class="px-2 py-1 rounded border text-xs">참석 ${attendees.length}명</button><button onclick="openMapModal('${sch.id}')" class="px-2 py-1 rounded border text-xs">지도</button></div></div></div>`;}).join('')}</div>`).join('')}
         ${!days.length ? `<div class="text-sm text-gray-500 py-8 text-center">선택된 월 일정이 없습니다.</div>` : ''}
       </div>
     </div>
@@ -1034,7 +1128,7 @@ function createAttendance(){
       </div>
       <div class="text-xs text-gray-500 mt-1">오늘 기준 가장 가까운 일정이 자동 선택됩니다.</div>
       <div class="mt-3 flex gap-2 overflow-x-auto pb-2">
-        ${schedules.map(s=>`<button onclick="setState({selectedScheduleId:'${s.id}'})" class="px-3 py-2 rounded-lg border text-sm whitespace-nowrap ${selected?.id===s.id?'bg-blue-600 text-white border-blue-600':'bg-white'}">${s.month}/${s.day} ${s.time}</button>`).join('')}
+        ${schedules.map(s=>`<button onclick="handleScheduleChange('${s.id}')" class="px-3 py-2 rounded-lg border text-sm whitespace-nowrap ${selected?.id===s.id?'bg-blue-600 text-white border-blue-600':'bg-white'}">${s.month}/${s.day} ${s.time}</button>`).join('')}
       </div>
       ${selected ? `<div class="mt-3 p-3 rounded-lg border bg-gray-50"><div class="font-semibold">${selected.month}/${selected.day} · ${selected.location}</div><div class="text-xs text-gray-500">${selected.address || '주소 미지정'}</div><div class="text-sm mt-1">상대: ${selected.opponent}</div></div>` : `<div class="mt-3 text-sm text-gray-500">일정을 먼저 등록해주세요.</div>`}
     </div>
@@ -1048,7 +1142,7 @@ function createAdmin(){
     <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
       <h3 class="text-base sm:text-lg font-semibold mb-2">관리자: 카톡 일정 붙여넣기</h3>
       <p class="text-xs sm:text-sm text-gray-600 mb-3">예: 4/11 충장(vs 나눔) 7-10시 형식으로 줄바꿈 입력하면 자동 파싱됩니다.</p>
-      <p class="text-xs text-gray-500 mb-2">권장: <code>config.example.js</code>를 복사해 <code>config.local.js</code>를 만들고 키를 관리하세요 (저장소 커밋 금지).</p><p class="text-xs text-gray-500 mb-2">클라우드 동기화: <span class="font-semibold">${state.cloudSyncStatus || '미연결'}</span></p>
+      <p class="text-xs text-gray-500 mb-2">권장: <code>config.example.js</code>를 복사해 <code>config.firebase.js</code>를 만들고 키를 관리하세요 (저장소 커밋 금지).</p><p class="text-xs text-gray-500 mb-2">클라우드 동기화: <span class="font-semibold">${state.cloudSyncStatus || '미연결'}</span></p>
       <div class="grid grid-cols-1 sm:grid-cols-5 gap-2 mb-3">
         <input class="border rounded-lg px-3 py-2 text-sm sm:col-span-2" placeholder="Kakao REST API Key (주소→좌표 변환용)" value="${state.kakaoRestKey}" oninput="setState({kakaoRestKey:this.value})">
         <input class="border rounded-lg px-3 py-2 text-sm sm:col-span-2" placeholder="Kakao JavaScript Key (지도 렌더링용)" value="${state.kakaoJsKey}" oninput="setState({kakaoJsKey:this.value})">
@@ -1114,14 +1208,88 @@ function createMapModal(){
     </div>
   </div>`;
 }
-function createFormation(){ const present = getPresentPlayers(); const total = Object.values(state.formation).flat().filter(Boolean).length; const savedQuarters = getSavedQuartersCount(); const selected = getSelectedSchedule(); return `<div class="space-y-4 sm:space-y-6"><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div class="flex items-center gap-2"><span class="text-sm text-gray-600 font-medium">현재 쿼터</span>${[1,2,3,4].map(n=>`<button onclick="setCurrentQuarter(${n})" class="px-3 py-2 rounded-lg text-sm font-medium transition-all relative ${state.currentQuarter===n?'bg-blue-600 text-white shadow-md':'bg-gray-100 hover:bg-gray-200'}">${n}${state.quarters[n-1] ? '<span class="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full"></span>' : ''}</button>`).join('')}</div><div class="text-sm text-gray-600"><span class="font-medium">저장된 쿼터: <span class="text-blue-600">${savedQuarters}/4</span></span></div></div><div class="mt-3 flex items-center justify-between text-sm"><span class="text-gray-600">📊 출석: <span class="font-semibold text-blue-600">${present.length}명</span> | 배치: <span class="font-semibold ${total===11?'text-green-600':total>11?'text-red-600':'text-orange-600'}">${total}/11명</span></span>${state.saveStatus?`<span class="text-green-600 font-medium">${state.saveStatus}</span>`:''}</div><div class="text-xs text-gray-500 mt-1">${selected ? `기준 일정: ${selected.month}/${selected.day} ${selected.time} ${selected.location}` : '참석 탭에서 일정을 선택해주세요'}</div></div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.users}<span class="ml-2">출석 인원</span></h3><div class="flex flex-wrap gap-2">${present.map(p=>{ const placed = Object.values(state.formation).flat().some(x=>x && x.id===p.id); const played = quartersPlayedCount(p.id); return `<div class="player-chip no-select ${placed?'bg-gray-200 text-gray-600':'bg-blue-100 text-blue-800 hover:bg-blue-200'} px-3 py-2 rounded-full text-sm font-medium ${placed?'cursor-not-allowed':'cursor-move'} transition-all" ${!placed?'draggable="true" ondragstart="handleDragStart(event, '+p.id+')" ondragend="handleDragEnd(event)"':''} style="touch-action:none;"><span class="mr-1">${p.name}</span><span class="text-xs opacity-75">(${p.position})</span><span class="ml-1 text-xs px-1 py-0.5 rounded ${played >= 2 ? 'bg-green-200 text-green-800' : played >= 1 ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-200 text-gray-600'}">${played}/4</span>${placed?'<span class="ml-1 text-xs">✓</span>':''}</div>`; }).join('')}</div>${present.length===0?'<p class="text-gray-500 text-sm mt-2 text-center py-4 bg-gray-50 rounded-lg">💡 참석 탭에서 참석자를 선택하면 여기서 바로 배치됩니다.</p>':''}</div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.target}<span class="ml-2">포메이션 - ${state.currentQuarter}쿼터</span></h3><div class="pitch"><div class="half-line"></div><div class="center-circle"></div><div class="center-dot"></div><div class="box top"></div><div class="box bottom"></div><div class="relative h-full flex flex-col justify-between py-8 sm:py-16">${rowOrder.map(pos => createPositionRow(pos)).join('')}</div></div><div class="mt-4 text-center"><span class="text-sm font-medium ${total===11?'text-green-600': total>11?'text-red-600':'text-gray-700'}">🏟️ 필드 선수: ${total}/11명 ${total>11?' ⚠️ 인원 초과!':''} ${total===11?' ✅ 완료':''}</span></div><div class="mt-4 flex flex-col sm:flex-row justify-center items-center gap-3"><button onclick="saveCurrentFormation()" class="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm flex items-center hover:bg-blue-700 transition-all hover:scale-105 ${total < 11 ? 'opacity-75' : ''}">${icons.save}<span class="ml-2">포메이션 저장</span></button><button onclick="clearFormation()" class="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 text-sm transition-all hover:scale-105">${icons.trash}<span class="ml-2">포메이션 초기화</span></button></div></div>${total < 11 ? '<div class="text-center mt-2 text-xs text-orange-600">💡 11명을 모두 배치한 후 저장하세요</div>' : ''}</div><div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold mb-4 flex items-center justify-between"><span class="flex items-center">${icons.calendar}<span class="ml-2">쿼터 미리보기</span></span><span class="text-sm font-normal text-gray-600">저장됨: ${savedQuarters}/4</span></h3><div class="space-y-4">${[1,2,3,4].map(n => createQuarterPreview(n)).join('')}</div></div></div>`; }
+function createFormation(){ 
+  const present = getPresentPlayers(); 
+  const total = Object.values(state.formation).flat().filter(Boolean).length; 
+  const savedQuarters = getSavedQuartersCount(); 
+  const selected = getSelectedSchedule(); 
+  
+  return `<div class="space-y-4 sm:space-y-6">
+    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-gray-600 font-medium">현재 쿼터</span>
+          ${[1,2,3,4].map(n=>`<button onclick="setCurrentQuarter(${n})" class="px-3 py-2 rounded-lg text-sm font-medium transition-all relative ${state.currentQuarter===n?'bg-blue-600 text-white shadow-md':'bg-gray-100 hover:bg-gray-200'}">${n}${state.quarters[n-1] ? '<span class="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full"></span>' : ''}</button>`).join('')}
+        </div>
+        <div class="text-sm text-gray-600">
+          <span class="font-medium">저장된 쿼터: <span class="text-blue-600">${savedQuarters}/4</span></span>
+        </div>
+      </div>
+      <div class="mt-3 flex items-center justify-between text-sm">
+        <span class="text-gray-600">📊 출석: <span class="font-semibold text-blue-600">${present.length}명</span> | 배치: <span class="font-semibold ${total===11?'text-green-600':total>11?'text-red-600':'text-orange-600'}">${total}/11명</span></span>
+        ${state.saveStatus?`<span class="text-green-600 font-medium">${state.saveStatus}</span>`:''}
+      </div>
+      <div class="text-xs text-gray-500 mt-1">${selected ? `기준 일정: ${selected.month}/${selected.day} ${selected.time} ${selected.location}` : '참석 탭에서 일정을 선택해주세요'}</div>
+    </div>
+
+    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+      <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.users}<span class="ml-2">출석 인원</span></h3>
+      <div class="flex flex-wrap gap-2">
+        ${present.map(p=>{ 
+          const placed = Object.values(state.formation).flat().some(x=>x && x.id===p.id); 
+          const played = quartersPlayedCount(p.id); 
+          return `<div class="player-chip no-select ${placed?'bg-gray-200 text-gray-600':'bg-blue-100 text-blue-800 hover:bg-blue-200'} px-3 py-2 rounded-full text-sm font-medium ${placed?'cursor-not-allowed':'cursor-move'} transition-all" ${!placed?'draggable="true" ondragstart="handleDragStart(event, '+p.id+')" ondragend="handleDragEnd(event)"':''} style="touch-action:none;"><span class="mr-1">${p.name}</span><span class="text-xs opacity-75">(${p.position})</span><span class="ml-1 text-xs px-1 py-0.5 rounded ${played >= 2 ? 'bg-green-200 text-green-800' : played >= 1 ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-200 text-gray-600'}">${played}/4</span>${placed?'<span class="ml-1 text-xs">✓</span>':''}</div>`; 
+        }).join('')}
+      </div>
+      ${present.length===0?'<p class="text-gray-500 text-sm mt-2 text-center py-4 bg-gray-50 rounded-lg">💡 참석 탭에서 참석자를 선택하면 여기서 바로 배치됩니다.</p>':''}
+    </div>
+
+    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+      <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.target}<span class="ml-2">포메이션 - ${state.currentQuarter}쿼터</span></h3>
+      <div class="pitch">
+        <div class="half-line"></div>
+        <div class="center-circle"></div>
+        <div class="center-dot"></div>
+        <div class="box top"></div>
+        <div class="box bottom"></div>
+        <div class="relative h-full flex flex-col justify-between py-8 sm:py-16">
+          ${rowOrder.map(pos => createPositionRow(pos)).join('')}
+        </div>
+      </div>
+      <div class="mt-4 text-center">
+        <span class="text-sm font-medium ${total===11?'text-green-600': total>11?'text-red-600':'text-gray-700'}">🏟️ 필드 선수: ${total}/11명 ${total>11?' ⚠️ 인원 초과!':''} ${total===11?' ✅ 완료':''}</span>
+      </div>
+      <div class="mt-4 flex flex-col sm:flex-row justify-center items-center gap-3">
+        <button onclick="saveCurrentFormation()" class="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm flex items-center hover:bg-blue-700 transition-all hover:scale-105 ${total !== 11 ? 'opacity-50 cursor-not-allowed' : ''}">
+          ${icons.save}
+          <span class="ml-2">${state.currentQuarter}쿼터 ${state.quarters[state.currentQuarter-1] ? '수정(덮어쓰기)' : '저장'}</span>
+        </button>
+        <button onclick="clearFormation()" class="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 text-sm transition-all hover:scale-105">
+          ${icons.trash}
+          <span class="ml-2">포메이션 초기화</span>
+        </button>
+      </div>
+    </div>
+    ${total !== 11 ? `<div class="text-center mt-2 text-xs text-orange-600">💡 11명을 정확히 배치해야 저장할 수 있습니다. (현재: ${total}명)</div>` : ''}
+    
+    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
+      <h3 class="text-base sm:text-lg font-semibold mb-4 flex items-center justify-between">
+        <span class="flex items-center">${icons.calendar}<span class="ml-2">쿼터 미리보기</span></span>
+        <span class="text-sm font-normal text-gray-600">저장됨: ${savedQuarters}/4</span>
+      </h3>
+      <div class="space-y-4">
+        ${[1,2,3,4].map(n => createQuarterPreview(n)).join('')}
+      </div>
+    </div>
+  </div>`; 
+}
 function createPositionRow(position){ const slots = state.formation[position]; const labels = positionLabels[position] || []; const color = position==='gk'?'bg-purple-500':position==='def'?'bg-green-500':position==='dmf'?'bg-teal-500':position==='cmf'?'bg-blue-500':position==='amf'?'bg-orange-500':'bg-red-500'; return `<div class="row-grid cols-${slots.length} px-4">${slots.map((player,idx)=>`<div class="cell drop-slot" data-position="${position}" data-slot-index="${idx}" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${position}', ${idx})" onclick="openPicker('${position}', ${idx})">${player?`<div class="relative"><div class="w-14 h-14 sm:w-16 sm:h-16 ${color} rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-bold shadow-lg player-chip-field no-select" title="클릭하여 제거 또는 교체" onclick="removePlayerFromSlot('${position}', ${idx}, event)" ontouchstart="openPicker('${position}', ${idx}')"><span class="text-center leading-tight px-1">${player.name}</span></div></div>` : `<div class="w-14 h-14 sm:w-16 sm:h-16 empty-slot rounded-full flex items-center justify-center text-white/60 text-xs cursor-pointer"><span class="text-center">+</span></div>`}<div class="text-white/90 text-xs font-medium mt-1">${labels[idx]||''}</div></div>`).join('')}</div>`; }
 function createQuarterPreview(n){ const q = state.quarters[n-1]; const title = `${n}쿼터`; const playerCount = q ? Object.values(q).flat().filter(Boolean).length : 0; return `<div class="border-2 rounded-lg p-4 ${q ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}"><div class="flex items-center justify-between mb-3"><div class="flex items-center gap-2"><span class="font-semibold text-sm">${title}</span><span class="text-xs px-2 py-1 rounded-full ${q ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}">${q ? `${playerCount}/11명` : '비어있음'}</span></div><div class="flex items-center gap-2"><button class="text-xs px-3 py-1 rounded-lg transition-all ${q?'bg-blue-600 text-white hover:bg-blue-700':'bg-gray-100 text-gray-500 cursor-not-allowed'}" ${q?`onclick="loadQuarter(${n})"`:'disabled'}>${q?'불러오기':'비어있음'}</button><button class="text-xs px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center transition-all" onclick="clearQuarter(${n})">${icons.trash}</button></div></div><div class="mini-pitch relative"><div class="half-line"></div><div class="box top"></div><div class="box bottom"></div>${miniRows(q)}</div></div>`; }
 function miniRows(q){ if (!q) return ''; const positions = ['fw', 'amf', 'cmf', 'dmf', 'def', 'gk']; const yPerc = [8, 24, 40, 56, 72, 88]; return positions.map((pos,i)=>{ const arr = q[pos] || []; const playersInPosition = arr.filter(p => p !== null); if (playersInPosition.length === 0) return ''; const cols = playersInPosition.length; const left = 8, right = 8; const rowStyle = `top:${yPerc[i]}%; left:${left}px; right:${right}px; grid-template-columns: repeat(${cols},1fr); gap: 4px;`; const gkColor = pos === 'gk' ? 'bg-purple-600' : 'bg-blue-600'; return `<div class="mini-row" style="${rowStyle}">${playersInPosition.map(p=> `<div class="mini-badge ${gkColor}" style="font-size: ${cols > 3 ? '9px' : '10px'};">${p.name}</div>`).join('')}</div>`; }).join(''); }
-function createBottomSheet(){ if(!state.ui.pickerOpen) return ''; const pos = state.ui.pickerPos, idx = state.ui.pickerSlot; const inSlot = state.formation[pos][idx]; const assignedIds = new Set(Object.values(state.formation).flat().filter(Boolean).map(p=>p.id)); const q = state.ui.pickerSearch.trim().toLowerCase(); const presentIds = new Set(getPresentPlayers().map(p=>p.id)); const candidates = state.players.filter(p=>presentIds.has(p.id)).filter(p=> !assignedIds.has(p.id) || (inSlot && p.id===inSlot.id)).filter(p=> p.name.toLowerCase().includes(q)); return `<div class="fixed inset-0 z-50"><div class="absolute inset-0 bg-black/30" onclick="closePicker()"></div><div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl p-4 pt-3"><div class="flex items-center justify-between mb-3"><div class="text-sm text-gray-600 font-medium">슬롯: <span class="text-blue-600 font-bold">${pos.toUpperCase()} ${idx+1}</span></div><button class="text-gray-500 text-sm hover:text-gray-700" onclick="closePicker()">✕ 닫기</button></div><div class="flex items-center gap-2 mb-4"><input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="이름 검색..." value="${state.ui.pickerSearch}" oninput="setState({ ui:{...state.ui, pickerSearch:this.value} })">${inSlot?`<button class="px-3 py-2 text-xs rounded-lg bg-red-100 hover:bg-red-200 text-red-700" onclick="unassignSlot('${pos}', ${idx}, event)">제거</button>`:''}</div><div class="max-h-[50vh] overflow-auto grid grid-cols-1 gap-2">${candidates.map(p=>`<button class="p-3 rounded-lg border text-left hover:bg-blue-50 hover:border-blue-200 transition-all" onclick="assignToSlot(${p.id})"><div class="flex items-center justify-between"><div class="flex items-center gap-2"><span class="text-sm font-medium">${p.name}</span><span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">${p.position}</span></div><span class="text-xs text-gray-500">쿼터: ${quartersPlayedCount(p.id)}/4</span></div></div></button>`).join('')}${candidates.length===0?`<div class="text-center text-sm text-gray-500 py-8 bg-gray-50 rounded-lg">😔 선택할 수 있는 선수가 없습니다</div>`:''}</div></div></div>`; }
+function createBottomSheet(){ if(!state.ui.pickerOpen) return ''; const pos = state.ui.pickerPos, idx = state.ui.pickerSlot; const inSlot = state.formation[pos][idx]; const assignedIds = new Set(Object.values(state.formation).flat().filter(Boolean).map(p=>p.id)); const q = state.ui.pickerSearch.trim().toLowerCase(); const presentIds = new Set(getPresentPlayers().map(p=>p.id)); const candidates = state.players.filter(p=>presentIds.has(p.id)).filter(p=> !assignedIds.has(p.id) || (inSlot && p.id===inSlot.id)).filter(p=> matchesSearch(p.name, q)); return `<div class="fixed inset-0 z-50"><div class="absolute inset-0 bg-black/30" onclick="closePicker()"></div><div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl p-4 pt-3"><div class="flex items-center justify-between mb-3"><div class="text-sm text-gray-600 font-medium">슬롯: <span class="text-blue-600 font-bold">${pos.toUpperCase()} ${idx+1}</span></div><button class="text-gray-500 text-sm hover:text-gray-700" onclick="closePicker()">✕ 닫기</button></div><div class="flex items-center gap-2 mb-4"><input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="이름 검색..." value="${state.ui.pickerSearch}" oninput="setState({ ui:{...state.ui, pickerSearch:this.value} })">${inSlot?`<button class="px-3 py-2 text-xs rounded-lg bg-red-100 hover:bg-red-200 text-red-700" onclick="unassignSlot('${pos}', ${idx}, event)">제거</button>`:''}</div><div class="max-h-[50vh] overflow-y-auto flex flex-col gap-2 w-full">${candidates.map(p=>`<button class="p-3 rounded-lg border text-left hover:bg-blue-50 hover:border-blue-200 transition-all" onclick="assignToSlot(${p.id})"><div class="flex items-center justify-between"><div class="flex items-center gap-2"><span class="text-sm font-medium">${p.name}</span><span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">${p.position}</span></div><span class="text-xs text-gray-500">쿼터: ${quartersPlayedCount(p.id)}/4</span></div></button>`).join('')}${candidates.length===0?`<div class="text-center text-sm text-gray-500 py-8 bg-gray-50 rounded-lg">😔 선택할 수 있는 선수가 없습니다</div>`:''}</div></div></div>`; }
 function createMembers(){
-  const q = state.playerSearch.trim().toLowerCase();
-  const list = q ? state.players.filter(p=>p.name.toLowerCase().includes(q)) : state.players;
+  const q = state.playerSearch.trim();
+  const list = q ? state.players.filter(p=>matchesSearch(p.name, q)) : state.players;
   return `<div class="space-y-4 sm:space-y-6">
     <div class="bg-blue-50 border border-blue-200 p-4 rounded-lg">
       <h3 class="text-base sm:text-lg font-semibold mb-2 flex items-center">${icons.users}<span class="ml-2">구성원/포지션 관리</span></h3>
