@@ -159,6 +159,8 @@ class HwarangApp {
     this.render();
     window.addEventListener('resize', () => { const m = window.innerWidth < MOBILE_WIDTH; if (m !== this.state.isMobile) this.setState({ isMobile: m }); });
     this.connect();
+    // 공유 버튼이 보이는 주소에서는 카카오 SDK를 미리 불러 둔다(누른 즉시 실행되게)
+    if ((CFG.kakaoShareHosts || []).includes(location.hostname)) loadKakaoSdk().catch(() => {});
   }
   render() {
     if (this._rendering) { this._dirty = true; return; }
@@ -233,16 +235,26 @@ class HwarangApp {
     const base = location.origin + location.pathname;
     const link = query => ({ mobileWebUrl: base + query, webUrl: base + query });
     const title = (d.getMonth() + 1) + '.' + d.getDate() + ' (' + DOW[d.getDay()] + ')' + (s.time ? ' ' + s.time : '') + ' · ' + (s.venue || '구장 미정');
-    loadKakaoSdk().then(() => window.Kakao.Share.sendDefault({
-      objectType: 'list',
-      headerTitle: title,
-      headerLink: link(''),
-      contents: ['attend', 'maybe', 'absent'].map(k => ({
-        title: LABEL[k], description: '눌러서 응답하기',
-        link: link('?s=' + encodeURIComponent(s.id) + '&r=' + k)
-      })),
-      buttons: [{ title: '참석 현황 보기', link: link('') }]
-    })).catch(() => alert('카카오톡 공유를 열지 못했어요. 잠시 후 다시 눌러 주세요.'));
+    const send = () => {
+      window.Kakao.Share.sendDefault({
+        objectType: 'list',
+        headerTitle: title,
+        headerLink: link(''),
+        contents: ['attend', 'maybe', 'absent'].map(k => ({
+          title: LABEL[k], description: '눌러서 응답하기',
+          link: link('?s=' + encodeURIComponent(s.id) + '&r=' + k)
+        })),
+        buttons: [{ title: '참석 현황 보기', link: link('') }]
+      });
+      // 눌렀는데 아무 일도 없어 보이지 않게 안내를 남긴다. PC는 새 창으로 열리는데 브라우저가 팝업을 막으면 창이 안 뜬다
+      this.flash(/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+        ? '카카오톡을 여는 중이에요.'
+        : '카카오톡 공유 창을 열었어요. 창이 안 보이면 주소창 끝의 팝업 차단 표시를 눌러 허용해 주세요.');
+    };
+    const fail = () => alert('카카오톡 공유를 열지 못했어요. 잠시 후 다시 눌러 주세요.');
+    // SDK를 미리 불러 둔 경우에는 누른 그 자리에서 바로 실행한다(늦게 실행하면 브라우저가 새 창을 막을 수 있다)
+    if (window.Kakao && window.Kakao.Share && window.Kakao.isInitialized()) { try { send(); } catch (e) { fail(); } }
+    else loadKakaoSdk().then(send).catch(fail);
   }
 
   // ── 쓰기 ──
