@@ -90,7 +90,9 @@
               <a href="{{ n.href }}" target="{{ n.target }}" rel="noopener" onClick="{{ n.onClick }}" style="min-height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:#F6F6F4; color:#141414; font-size:13px; font-weight:800;">{{ n.label }}</a>
             </sc-for>
           </div>
-          <div onClick="{{ shareKakao }}" style="margin-top:8px; min-height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:#FEE500; color:#191600; font-size:13px; font-weight:800; cursor:pointer;">카톡방에 참석 투표 올리기</div>
+          <sc-if value="{{ canShare }}">
+            <div onClick="{{ shareKakao }}" style="margin-top:8px; min-height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:#FEE500; color:#191600; font-size:13px; font-weight:800; cursor:pointer;">카톡방에 참석 투표 올리기</div>
+          </sc-if>
         </div>
 
         <div style="padding:{{ ui.cardPad }}; border-top:1px solid #F0EFEB; background:#FFFFFF;">

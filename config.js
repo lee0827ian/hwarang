@@ -9,5 +9,8 @@ window.HWARANG_CONFIG = {
     "messagingSenderId": "620103429577",
     "appId": "1:620103429577:web:ad4598638b6a10ecb20c18"
   },
-  "kakaoJsKey": "47eed652b004605d8a8e3e39df268f24"
+  "kakaoJsKey": "47eed652b004605d8a8e3e39df268f24",
+  // "카톡방에 참석 투표 올리기" 버튼을 보여 줄 주소. 지금은 테스트(미리보기) 주소에서만 켠다.
+  // 운영에 열 때 "fchwarang.web.app"을 추가한다.
+  "kakaoShareHosts": ["fchwarang--redesign-4z3l01vw.web.app"]
 };

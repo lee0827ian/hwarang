@@ -676,7 +676,7 @@ class HwarangApp {
       closePicker: () => { this.pendingRsvp = null; this.setState({ pickerOpen: false }); },
       pickerNote: this.pendingRsvp && this.pendingLabel() ? '이름을 고르면 ' + this.pendingLabel() + ' "' + LABEL[this.pendingRsvp.status] + '"이 바로 저장돼요.' : '',
       flash: st.flash, closeFlash: () => this.setState({ flash: '' }),
-      shareKakao: () => this.shareToKakao(next),
+      canShare: (CFG.kakaoShareHosts || []).includes(location.hostname), shareKakao: () => this.shareToKakao(next),
       stop: e => e.stopPropagation(),
       onQuery: e => filterByQuery('[data-pick]', 'pick', e.target.value, 'pickEmpty', 'flex')
     };
