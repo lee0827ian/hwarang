@@ -45,3 +45,10 @@
 
 Firebase Hosting에 `index.html`, `app.js`, `renderer.js`, `config.js`, `assets/`, `404.html`만 올린다.
 `.git` 폴더나 문서 파일은 올리지 않는다.
+
+`tools/deploy.py`가 그 파일만 골라 올린다. 기본은 미리보기 주소(redesign 채널)이고, `live`를 붙이면 운영에 올린다.
+
+```
+python tools/deploy.py <토큰>          # 미리보기
+python tools/deploy.py <토큰> live     # 운영
+```
