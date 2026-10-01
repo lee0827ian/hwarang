@@ -84,7 +84,7 @@ function navLinks(s) {
   const n = encodeURIComponent(name);
   const android = /Android/i.test(navigator.userAgent), ios = /iPhone|iPad|iPod/i.test(navigator.userAgent);
   if (!hasCoord || (!android && !ios)) {
-    const where = s.address || name;
+    const where = s.address || (name === '미정' ? '' : name);   // 구장이 정해지지 않았으면 버튼을 주지 않는다
     if (!where) return [];
     const href = hasCoord ? `https://map.kakao.com/link/to/${n},${s.lat},${s.lng}` : 'https://map.kakao.com/link/search/' + encodeURIComponent(where);
     return [{ label: '카카오맵에서 보기', href, target: '_blank' }];
@@ -299,7 +299,8 @@ class HwarangApp {
       return { md: (d.getMonth() + 1) + '.' + d.getDate(), dow: DOW[d.getDay()], month: (d.getMonth() + 1) + '월' };
     };
     const ddayOf = s => { const n = Math.round((new Date(s.date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000); return n <= 0 ? 'D-DAY' : 'D-' + n; };
-    const matchLabel = s => (s.opponent ? 'vs ' + s.opponent : '자체 경기');
+    // 상대가 없으면 자체 경기. 구장도 정해지지 않은 일정은 아무것도 붙이지 않는다
+    const matchLabel = s => (s.opponent ? 'vs ' + s.opponent : s.venue === '미정' ? '' : '자체 경기');
 
     // 탭
     const go = k => () => { this.setState({ tab: k }); window.scrollTo(0, 0); };
@@ -458,9 +459,11 @@ class HwarangApp {
       const t = tally(s), p = dateParts(s), mine = me ? statusOf(s, meId) : null, open = schedSel === s.id;
       const a = t.attend.length, m2 = t.maybe.length, x = t.absent.length, total = sorted.length;
       const apps = open ? navLinks(s) : [];
-      const pastChip = mine === 'attend' ? { chip: '출석', chipBg: '#141414', chipFg: '#FFFFFF', chipBd: 'transparent' } : { chip: '결석', chipBg: '#F0F0EC', chipFg: '#4F4F4F', chipBd: 'transparent' };
+      const gray = text => ({ chip: text, chipBg: '#F0F0EC', chipFg: '#4F4F4F', chipBd: 'transparent' });
+      // 지난 일정: 출석 기록이 하나도 없으면 "기록 없음", 있으면 내 출석 여부(이름을 안 골랐으면 참석 인원)
+      const pastChip = !a ? gray('기록 없음') : !me ? gray('참석 ' + a) : mine === 'attend' ? { chip: '출석', chipBg: '#141414', chipFg: '#FFFFFF', chipBd: 'transparent' } : gray('결석');
       return {
-        ...(isPast ? (me ? pastChip : { chip: '참석 ' + a, chipBg: '#F0F0EC', chipFg: '#4F4F4F', chipBd: 'transparent' }) : chipFor(mine)),
+        ...(isPast ? pastChip : chipFor(mine)),
         monthLabel: p.month, date: p.md, dow: p.dow + '요일', venue: s.venue || '구장 미정', address: s.address || '',
         isNext: !isPast && next && s.id === next.id, dday: ddayOf(s), dateFg: isPast ? '#6B6B6B' : '#141414',
         meta: [s.time, matchLabel(s), '참석 ' + a + '명'].filter(Boolean).join(' · '),
@@ -480,13 +483,14 @@ class HwarangApp {
     });
     const answeredN = me ? upcomingAll.filter(s => statusOf(s, meId)).length : 0;
     const schedSub = isPast
-      ? '지난 일정 ' + pastAll.length + '경기' + (me ? ' · 내 출석 ' + pastAll.filter(s => statusOf(s, meId) === 'attend').length + '회' : '')
+      ? '지난 일정 ' + pastAll.length + '경기' + (me && pastAll.some(s => tally(s).attend.length) ? ' · 내 출석 ' + pastAll.filter(s => statusOf(s, meId) === 'attend').length + '회' : '')
       : (me ? '예정 ' + upcomingAll.length + '경기 중 ' + answeredN + '경기 응답했어요. 미리 응답해 두면 운영진이 인원 파악하기 쉬워요.' : '이름을 선택하면 일정별로 미리 응답할 수 있어요.');
     const sf = st.schedForm;
 
     // ── 구성원 탭 ──
     const year = today.slice(0, 4);
-    const seasonPast = pastAll.filter(s => s.date.slice(0, 4) === year);
+    // 참석률은 올해 지난 일정 중 출석 기록이 있는 경기만 센다(기록 없이 일정만 올린 경기는 뺀다)
+    const seasonPast = pastAll.filter(s => s.date.slice(0, 4) === year && tally(s).attend.length > 0);
     const counts = { all: sorted.length, GK: 0, DF: 0, MF: 0, FW: 0 };
     sorted.forEach(m => { if (counts[m.pos] != null) counts[m.pos]++; });
     const posFilters = [['all', '전체'], ['GK', 'GK'], ['DF', 'DF'], ['MF', 'MF'], ['FW', 'FW']].map(([k, l]) => {
@@ -550,7 +554,7 @@ class HwarangApp {
       saveSched: () => { if (!sf.saving) this.saveSchedule(); },
       // 구성원
       memberTotal: sorted.length + '명',
-      memberSub: seasonPast.length ? '참석률은 ' + year + ' 시즌 지난 일정 ' + seasonPast.length + '경기 기준이에요.' : '참석률은 경기가 끝난 뒤부터 집계돼요.' + (isAdmin ? ' 이름을 누르면 수정할 수 있어요.' : ''),
+      memberSub: (seasonPast.length ? '참석률은 ' + year + ' 시즌 출석 기록이 있는 ' + seasonPast.length + '경기 기준이에요.' : '참석률은 경기가 끝난 뒤부터 집계돼요.') + (isAdmin ? ' 이름을 누르면 수정할 수 있어요.' : ''),
       memberQuery: this.memberQuery,
       onMemberQuery: e => { this.memberQuery = e.target.value; filterByQuery('[data-member]', 'member', this.memberQuery, 'memberEmpty', 'grid'); },
       posFilters, memberRows, memberEmpty: String(!memberRows.some(r => r.display !== 'none')),
