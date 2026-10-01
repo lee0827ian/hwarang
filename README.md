@@ -1,46 +1,36 @@
-# hwarang
+# 화랑 FC
 
-## Firebase 연동 (GCP project: `github-475723`)
+화랑 FC 사이트. 다음 경기, 참석 투표, 포메이션, 일정, 구성원을 보여 준다.
 
-현재 참석 데이터는 기본적으로 브라우저 로컬 저장소(localStorage)에 저장됩니다.
-`config.local.js`에 Firebase 설정을 넣으면 참석 데이터가 Firestore와 동기화됩니다.
+- 운영 주소: https://fchwarang.web.app (Firebase Hosting, 프로젝트 `fchwarang`)
+- 화면 디자인: Claude Design "Hwarang Home.dc.html"을 옮긴 것
 
-### 1) Firebase 프로젝트 준비
-1. [Firebase Console](https://console.firebase.google.com/)에서 프로젝트 선택 또는 생성
-   - 기존 GCP 프로젝트 `github-475723` 연결 가능
-2. 프로젝트 설정 → **웹 앱 추가**
-3. 발급된 Firebase SDK 설정값(`apiKey`, `appId`, `messagingSenderId` 등) 복사
-4. Firestore Database 생성 (권장: 시작 모드 테스트 후 규칙 강화)
+## 파일
 
-### 2) 로컬 설정 파일 생성
-```bash
-cp config.example.js config.local.js
-```
-`config.local.js`에서 `window.APP_CONFIG.FIREBASE_CONFIG` 값을 실제 발급값으로 채우세요.
+| 파일 | 내용 |
+|---|---|
+| `index.html` | 화면 템플릿. `{{ 값 }}`, `<sc-for>`, `<sc-if>`, `on*`은 `renderer.js`가 해석한다 |
+| `renderer.js` | 템플릿 해석기 |
+| `app.js` | 화면 로직과 데이터 연결 |
+| `config.js` | Firebase 웹 설정과 카카오 JavaScript 키. 브라우저에 공개되는 값만 둔다 |
+| `firestore.rules` | Firestore 권한 규칙 |
+| `assets/` | 로고 |
 
-### 3) Firestore 규칙(초기 테스트용 예시)
-> 운영 전에는 인증 기반 규칙으로 강화하세요.
+빌드 과정은 없다. 파일을 그대로 올리면 된다.
 
-```txt
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /schedule_attendance/{docId} {
-      allow read, write: if true;
-    }
-  }
-}
-```
+## 데이터 (Firestore)
 
-### 4) 실행
-정적 서버로 실행 후 참석 탭에서 체크하면 `schedule_attendance` 컬렉션에 저장됩니다.
+- `hw_team/roster`: 구성원 명단. `members: [{ id, name, pos, admin }]`
+- `hw_schedules/{일정}`: 일정 한 건. `date`, `time`, `venue`, `address`, `opponent`, `lat`, `lng`,
+  참석 응답 `rsvp: { 구성원 id: attend | maybe | absent }`, 포메이션 `quarters: [{ 자리: 구성원 id } × 4쿼터]`
 
-- 문서 ID: `schedule.id` (예: `2026-04-11-2`)
-- 필드: `attendees`, `month`, `day`, `location`, `updatedAt`
+## 권한
 
-### 동작 방식
-- Firebase 설정이 없으면: 로컬 저장만 사용
-- Firebase 설정이 있으면:
-  - 최초 로딩 시 Firestore 데이터 우선 병합
-  - 클라우드가 비어있으면 현재 일정 데이터를 업로드
-  - 참석 토글 시 Firestore에 즉시 반영
+로그인이 없다. 이름은 처음 한 번 명단에서 고르고 기기에 저장된다.
+명단에서 `admin`인 사람(운영진)에게만 포메이션 편집, 일정 추가·수정·삭제, 구성원 수정 버튼이 보인다.
+지금은 서버 규칙이 열려 있어 화면 밖에서도 쓸 수 있다. 운영진 비밀번호를 도입하면 규칙을 좁힌다.
+
+## 배포
+
+Firebase Hosting에 `index.html`, `app.js`, `renderer.js`, `config.js`, `assets/`, `404.html`만 올린다.
+`.git` 폴더나 문서 파일은 올리지 않는다.

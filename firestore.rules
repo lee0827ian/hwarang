@@ -1,6 +1,20 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ── 새 사이트(2026-10 개편) ──
+    // 구성원 명단: hw_team/roster
+    // 일정 · 참석 응답 · 포메이션: hw_schedules/{일정}
+    // 로그인이 없는 사이트라 지금은 누구나 읽고 쓸 수 있다(이전 사이트와 같은 수준).
+    // 운영진 비밀번호를 도입하면 일정·포메이션·명단 쓰기는 로그인한 운영진만 가능하게 바꾼다.
+    match /hw_team/{docId} {
+      allow read, write: if true;
+    }
+    match /hw_schedules/{docId} {
+      allow read, write: if true;
+    }
+
+    // ── 이전 사이트(교체가 끝나면 지운다) ──
     match /schedule_attendance/{docId} {
       allow read, write: if true;
     }

@@ -1,1326 +1,540 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>화랑FC 관리 시스템</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>화랑 FC</title>
+  <link rel="icon" type="image/svg+xml" href="./assets/hwarang-logo.svg">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
   <style>
-    body { margin:0; padding:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
-    .icon { display:inline-block; width:1rem; height:1rem; vertical-align:middle; }
-    .icon-lg { width:1.5rem; height:1.5rem; }
-    @media (min-width:640px){ .icon-lg{ width:2rem; height:2rem; } }
-
-    /* Pitch */
-    .pitch{ position:relative; min-height:420px; background:linear-gradient(#bfe3bf,#9bd49b); border-radius:14px; overflow:hidden; box-shadow:inset 0 0 0 2px rgba(255,255,255,.6) }
-    @media (min-width:640px){ .pitch{ min-height:640px; } }
-    .pitch .half-line{ position:absolute; top:50%; left:0; right:0; height:2px; background:rgba(255,255,255,.9); transform:translateY(-50%) }
-    .pitch .center-circle{ position:absolute; top:50%; left:50%; width:120px; height:120px; border:2px solid rgba(255,255,255,.9); border-radius:50%; transform:translate(-50%,-50%) }
-    @media (min-width:640px){ .pitch .center-circle{ width:160px; height:160px } }
-    .pitch .center-dot{ position:absolute; top:50%; left:50%; width:8px; height:8px; background:#fff; border-radius:50%; transform:translate(-50%,-50%) }
-    .pitch .box{ position:absolute; left:50%; width:220px; height:100px; border:2px solid rgba(255,255,255,.9); transform:translateX(-50%); background:rgba(255,255,255,.06) }
-    @media (min-width:640px){ .pitch .box{ width:260px; height:140px } }
-    .pitch .box.top{ top:10px } .pitch .box.bottom{ bottom:10px }
-
-    /* DnD */
-    .player-chip.dragging{ opacity:.55 }
-    .drop-slot.drag-over{ outline:2px dashed rgba(59,130,246,.9); outline-offset:4px }
-
-    /* Mobile nav scroll */
-    .nav-scroll{ scrollbar-width:none; -ms-overflow-style:none }
-    .nav-scroll::-webkit-scrollbar{ display:none }
-
-    /* 균등 그리드 - 개선된 버전 */
-    .row-grid { 
-      display:grid; 
-      align-items:center; 
-      width: 100%;
-      gap: 8px;
-    }
-    .row-grid.cols-1{ grid-template-columns: 1fr; }
-    .row-grid.cols-2{ grid-template-columns: 1fr 1fr; }
-    .row-grid.cols-3{ grid-template-columns: 1fr 1fr 1fr; }
-    .row-grid.cols-4{ grid-template-columns: 1fr 1fr 1fr 1fr; }
-    .row-grid.cols-5{ grid-template-columns: 1fr 1fr 1fr 1fr 1fr; }
-    
-    .row-grid .cell{ 
-      display:flex; 
-      flex-direction:column; 
-      align-items:center; 
-      justify-content:center;
-      gap:4px; 
-      min-height: 80px;
-    }
-    
-    @media (min-width:640px) {
-      .row-grid {
-        gap: 12px;
-      }
-      .row-grid .cell {
-        min-height: 100px;
-      }
-    }
-
-    /* 미니 프리뷰 피치 - 개선된 스타일 */
-    .mini-pitch{ 
-      position:relative; 
-      height:160px; 
-      background:linear-gradient(#bfe3bf,#9bd49b); 
-      border-radius:10px; 
-      overflow:hidden; 
-      box-shadow:inset 0 0 0 2px rgba(255,255,255,.5);
-    }
-    .mini-pitch .half-line{ position:absolute; top:50%; left:0; right:0; height:2px; background:rgba(255,255,255,.7); transform:translateY(-50%) }
-    .mini-pitch .box{ position:absolute; left:50%; width:120px; height:52px; border:2px solid rgba(255,255,255,.7); transform:translateX(-50%); background:rgba(255,255,255,.06) }
-    .mini-pitch .box.top{ top:6px } 
-    .mini-pitch .box.bottom{ bottom:6px }
-    .mini-row{ 
-      position:absolute; 
-      display:grid; 
-      place-items:center; 
-    }
-    .mini-badge{ 
-      font-size:10px; 
-      line-height:1.2; 
-      color:#fff; 
-      background:rgba(59,130,246,.9); 
-      padding:3px 6px; 
-      border-radius:999px; 
-      white-space:nowrap; 
-      max-width:90px; 
-      overflow:hidden; 
-      text-overflow:ellipsis; 
-      font-weight: 500;
-      border: 1px solid rgba(255,255,255,0.3);
-    }
-
-    /* 길게 누르기 힌트 감안한 선택 방지 */
-    .no-select{ user-select:none; -webkit-user-select:none; }
-    
-    /* 플레이어 칩 호버 효과 개선 */
-    .player-chip-field {
-      transition: all 0.2s ease;
-      cursor: pointer;
-    }
-    .player-chip-field:hover {
-      transform: scale(1.05);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    }
-    
-    /* 빈 슬롯 스타일 개선 */
-    .empty-slot {
-      border: 2px dashed rgba(255,255,255,0.4);
-      background: rgba(255,255,255,0.1);
-      transition: all 0.2s ease;
-    }
-    .empty-slot:hover {
-      border-color: rgba(255,255,255,0.7);
-      background: rgba(255,255,255,0.2);
-    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #F6F6F4; font-family: 'Pretendard', 'Apple SD Gothic Neo', sans-serif; color: #141414; -webkit-font-smoothing: antialiased; }
+    a { color: #C71F10; text-decoration: none; }
+    a:hover { color: #E53B1F; }
+    label input, label select { font-weight: 600; }
+    /* 검색으로 걸러지는 "없음" 안내: data-show가 true일 때만 보인다 */
+    #memberEmpty, #pickEmpty { display: none; }
+    #memberEmpty[data-show="true"], #pickEmpty[data-show="true"] { display: block; }
   </style>
 </head>
 <body>
-<div id="root"></div>
+<div id="app"></div>
 
-<script src="config.firebase.js"></script>
-<script>
-// --- Google Sheets Configuration ---
-const APP_CONFIG = window.APP_CONFIG || {};
-// 경기 기록 읽기 전용 (시트를 '웹에 공개'해야 모든 사람이 볼 수 있습니다.)
-const API_KEY = APP_CONFIG.GOOGLE_API_KEY || ''; 
-// 경기 기록 쓰기 권한을 위한 클라이언트 ID (관리자 로그인에 사용)
-const CLIENT_ID = APP_CONFIG.GOOGLE_CLIENT_ID || ''; 
-// 사용자님이 제공해주신 구글 시트 ID
-const SPREADSHEET_ID = APP_CONFIG.SPREADSHEET_ID || '';
-const KAKAO_REST_API_KEY = APP_CONFIG.KAKAO_REST_API_KEY || ''; // config에서 관리
-const KAKAO_JS_API_KEY = APP_CONFIG.KAKAO_JS_API_KEY || ''; // config에서 관리
-const ADMIN_PASSWORD = APP_CONFIG.ADMIN_PASSWORD || '1234';
-const DISCOVERY_DOCS = ['https://sheets.googleapis.com/$discovery/rest?version=v4'];
-const SCOPES = 'https://www.googleapis.com/auth/spreadsheets'; // 쓰기 권한 스코프
-const FIREBASE_CONFIG = APP_CONFIG.FIREBASE_CONFIG || null;
-const FIREBASE_SYNC_ENABLED = APP_CONFIG.FIREBASE_SYNC_ENABLED !== false;
-const FIREBASE_ATTENDANCE_COLLECTION = APP_CONFIG.FIREBASE_ATTENDANCE_COLLECTION || 'schedule_attendance';
+<!-- 화면 템플릿 (Claude Design "Hwarang Home.dc.html" 이식본).
+     {{ 경로 }} = app.js renderVals() 값 / <sc-for> 반복 / <sc-if> 조건 / on* = 이벤트 핸들러 -->
+<template id="tpl">
+<div style="min-height:100vh; background:#F6F6F4; padding-bottom:{{ ui.bottomPad }};">
 
-const VENUE_ADDRESS_MAP = {
-  '충장근린체육공원': '경기 고양시 덕양구 행주내동 636',
-  '중산체육공원': '경기도 고양시 일산동구 중산로 217',
-  '신원체육공원': '경기도 고양시 덕양구 호국로1254번길 11',
-  '고양어울림누리 별무리경기장': '경기 고양시 덕양구 어울림로 33',
-  '원능수질복원센터': '경기 고양시 덕양구 신평길 76',
-  '둔치 축구장': '경기 고양시 덕양구 덕은동 519-19 둔치축구장',
-};
-const VENUE_ALIAS_MAP = [
-  { keywords: ['충장'], venue: '충장근린체육공원' },
-  { keywords: ['중산'], venue: '중산체육공원' },
-  { keywords: ['신원'], venue: '신원체육공원' },
-  { keywords: ['어울림', '별무리'], venue: '고양어울림누리 별무리경기장' },
-  { keywords: ['원능'], venue: '원능수질복원센터' },
-  { keywords: ['둔치'], venue: '둔치 축구장' },
-];
-
-// --- STATE ---
-let state = {
-  activeTab: "dashboard",
-  players: [], // 로컬 JSON에서 로드
-  matches: [], // Google Sheets 'Matches' 시트에서 로드
-  formation: {
-    gk: [null], def: [null,null,null,null], dmf: [null,null], cmf: [null,null,null], amf: [null,null], fw: [null]
-  },
-  quarters: [null, null, null, null],
-  currentQuarter: 1,
-  newMatch: { opponent:"", location:"", date:"", result:"", goals:0, conceded:0, scorers:"" },
-  draggedPlayer: null,
-  saveStatus: "",
-  playerSearch: "",
-  recordSearch: "",
-  weekOffset: 0,
-  weeklyConfig: {},
-  personalRecords: {},
-  schedules: [],
-  selectedScheduleId: null,
-  selectedMonth: new Date().getMonth() + 1,
-  showPastMonths: false,
-  adminUnlocked: false,
-  cloudSyncEnabled: false,
-  cloudSyncStatus: "",
-  kakaoRestKey: "",
-  kakaoJsKey: "",
-  scheduleInput: `3/28 중산구장(vs 마크) 7-10시
-4/4 원능수질(vs레스) 6-9시
-4/11 충장(vs 나눔) 7-10시
-4/18 중산(vs레스) 7-10시
-4/25 신원(상대팀 미정) 7-10시
-5/02 휴식
-5/09 미정
-5/16 미정
-5/23 미정
-5/30 둔치(상대팀 확정) 7-10시`,
-  ui: { pickerOpen:false, pickerPos:null, pickerSlot:null, pickerSearch:"", mapOpen:false, mapScheduleId:null },
-  isGapiLoaded: false,
-  isGapiSignedIn: false, // 쓰기 권한이 있는 관리자 로그인 여부
-};
-
-let tokenClient;
-let gapiInited = false;
-let gisInited = false;
-let firebaseApp = null;
-let firestoreDb = null;
-
-const positionLabels = { gk: ['GK'], def: ['LB','CB','CB','RB'], dmf: ['DMF','DMF'], cmf: ['LM','CM','RM'], amf: ['LW','RW'], fw: ['ST'] };
-const rowOrder = ['fw','amf','cmf','dmf','def','gk'];
-const icons = {
-  plus:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>',
-  users:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2m14 0h3v-2a7 7 0 00-7-7M9 7a4 4 0 118 0 4 4 0 01-8 0z"/></svg>',
-  calendar:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12"/></svg>',
-  barChart:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19V10m-4 9V7m8 12v-4m4 4V4"/></svg>',
-  target:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><circle cx="12" cy="12" r="5" stroke-width="2"/></svg>',
-  shield:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 22s8-3 8-10V6l-8-4-8 4v6c0 7 8 10 8 10z"/></svg>',
-  save:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h3"/></svg>',
-  sync:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>',
-  trash:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5-4h4a2 2 0 012 2v2H8V5a2 2 0 012-2z"/></svg>',
-  download:'<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>'
-};
-
-// --- RENDER/STATE ---
-function render(){
-  document.getElementById('root').innerHTML = createApp();
-  setTimeout(()=>{ renderDashboardMap(); }, 0);
-}
-function setState(p){ state = {...state, ...p}; render(); }
-
-// --- UTILS ---
-function sanitizeName(raw){
-  if(!raw) return "";
-  let s = String(raw).trim();
-  s = s.replace(/^화랑[\s_\-]?/i, "");
-  s = s.replace(/\s{2,}/g, " ");
-  s = s.replace(/[^\p{L}\p{N}\s._-]/gu, "");
-  return s.trim();
-}
-function getChosung(str){
-  const CHOSUNG = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
-  return str.split('').map(c=>{
-    const code = c.charCodeAt(0) - 0xAC00;
-    if(code < 0 || code > 11171) return c;
-    return CHOSUNG[Math.floor(code / 588)];
-  }).join('');
-}
-function matchesSearch(name, q){
-  if(!q) return true;
-  if(name.includes(q)) return true;
-  if(getChosung(name).includes(q)) return true;
-  return false;
-}
-
-function safeJSON(s, fallback){ try{ return JSON.parse(s); }catch{ return fallback; } }
-function deepCopyFormation(f){ return JSON.parse(JSON.stringify(f)); }
-
-function weekKeyFromOffset(offset = 0){
-  const now = new Date();
-  const day = now.getDay();
-  const diff = (day + 6) % 7;
-  const monday = new Date(now);
-  monday.setHours(0,0,0,0);
-  monday.setDate(now.getDate() - diff + offset * 7);
-  const y = monday.getFullYear();
-  const m = String(monday.getMonth()+1).padStart(2,'0');
-  const d = String(monday.getDate()).padStart(2,'0');
-  return `${y}-${m}-${d}`;
-}
-function weekRangeLabel(offset = 0){
-  const key = weekKeyFromOffset(offset);
-  const start = new Date(`${key}T00:00:00`);
-  const end = new Date(start);
-  end.setDate(start.getDate()+6);
-  const fmt = (v)=>`${v.getMonth()+1}/${v.getDate()}`;
-  return `${fmt(start)} ~ ${fmt(end)}`;
-}
-function defaultPersonalRecord(){ return { goals:0, assists:0, shots:0, tackles:0, saves:0, note:"" }; }
-function resolveVenueInfo(rawLocation){
-  const input = String(rawLocation || '').trim();
-  if(!input || input === '미정' || input.includes('휴식')){
-    return { venueName: input || '미정', address: '', mapQuery: input || '미정' };
-  }
-  const matched = VENUE_ALIAS_MAP.find(({keywords})=>keywords.some(keyword=>input.includes(keyword)));
-  if(!matched){
-    return { venueName: input, address: '', mapQuery: input };
-  }
-  const venueName = matched.venue;
-  const address = VENUE_ADDRESS_MAP[venueName] || '';
-  return { venueName, address, mapQuery: address || venueName };
-}
-function pickDefaultMonth(schedules){
-  const currentMonth = new Date().getMonth() + 1;
-  const months = [...new Set((schedules || []).map(v=>v.month))];
-  if(months.includes(currentMonth)) return currentMonth;
-  return months[0] || currentMonth;
-}
-function parseScheduleLine(line, idx){
-  const raw = String(line || "").trim();
-  if(!raw) return null;
-  const m = raw.match(/^(\d{1,2})\/(\d{1,2})\s+(.+)$/);
-  if(!m) return null;
-  const month = parseInt(m[1],10);
-  const day = parseInt(m[2],10);
-  const rest = m[3].trim();
-  const currentYear = new Date().getFullYear();
-  let location = rest;
-  let opponent = "미정";
-  let time = "미정";
-  const timeMatch = rest.match(/(\d{1,2}\s*-\s*\d{1,2}시)$/);
-  if(timeMatch){
-    time = timeMatch[1].replace(/\s+/g,'');
-    location = rest.replace(timeMatch[1], "").trim();
-  }
-  const oppMatch = location.match(/\(vs\s*([^)]+)\)/i) || location.match(/\(([^)]*상대팀[^)]*)\)/);
-  if(oppMatch){
-    opponent = oppMatch[1].trim();
-    location = location.replace(oppMatch[0], "").trim();
-  } else if(location.includes("휴식")) {
-    opponent = "휴식";
-  }
-  if(location.includes("미정") && !location.includes("구장")) location = "미정";
-  const { venueName, address, mapQuery } = resolveVenueInfo(location);
-  const dateISO = `${currentYear}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-  return {
-    id: `${dateISO}-${idx}`,
-    raw,
-    dateISO,
-    month,
-    day,
-    location: venueName,
-    address,
-    mapQuery,
-    opponent,
-    time,
-    mapUrl: mapQuery && mapQuery !== "미정" ? `https://map.kakao.com/?q=${encodeURIComponent(mapQuery)}` : "",
-    attendees: [],
-  };
-}
-function parseScheduleInput(text){
-  const lines = String(text || "").split('\n').map(v=>v.trim()).filter(Boolean);
-  return lines.map((line,idx)=>parseScheduleLine(line, idx)).filter(Boolean);
-}
-function sortSchedules(list){
-  return [...list].sort((a,b)=> new Date(a.dateISO) - new Date(b.dateISO));
-}
-function getKakaoKey(){ return (state.kakaoRestKey || KAKAO_REST_API_KEY || "").trim(); }
-function getKakaoJsKey(){ return (state.kakaoJsKey || KAKAO_JS_API_KEY || "").trim(); }
-function ensureKakaoSdkLoaded(){
-  return new Promise((resolve, reject)=>{
-    if(window.kakao?.maps){ resolve(true); return; }
-    const key = getKakaoJsKey();
-    if(!key){ reject(new Error("카카오 JavaScript 키가 필요합니다")); return; }
-    const id = "kakao-map-sdk";
-    if(document.getElementById(id)){
-      const wait = setInterval(()=>{
-        if(window.kakao?.maps){
-          clearInterval(wait);
-          resolve(true);
-        }
-      }, 100);
-      setTimeout(()=>{ clearInterval(wait); reject(new Error("카카오 SDK 로드 타임아웃")); }, 5000);
-      return;
-    }
-    const script = document.createElement("script");
-    script.id = id;
-    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${key}&autoload=false&libraries=services`;
-    script.onload = ()=>window.kakao.maps.load(()=>resolve(true));
-    script.onerror = ()=>reject(new Error("카카오 SDK 로드 실패"));
-    document.head.appendChild(script);
-  });
-}
-async function geocodeLocation(location){
-  const key = getKakaoKey();
-  if(!key || !location || location === "미정") return null;
-  try{
-    const res = await fetch(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(location)}`, {
-      headers: { Authorization: `KakaoAK ${key}` }
-    });
-    if(!res.ok) return null;
-    const data = await res.json();
-    const doc = data.documents?.[0];
-    if(!doc) return null;
-    return {
-      lat: parseFloat(doc.y),
-      lng: parseFloat(doc.x),
-      placeName: doc.place_name || location,
-      mapUrl: `https://map.kakao.com/link/map/${encodeURIComponent(doc.place_name || location)},${doc.y},${doc.x}`,
-    };
-  }catch(e){
-    console.warn("Kakao geocode 실패", e);
-    return null;
-  }
-}
-function getScheduleMonths(){
-  const months = [...new Set(state.schedules.map(s=>s.month))];
-  return months.length ? months.sort((a,b)=>a-b) : [state.selectedMonth];
-}
-function getScheduleById(id){ return state.schedules.find(s=>s.id===id) || null; }
-function getDefaultScheduleId(list = state.schedules){
-  if(!list.length) return null;
-  const today = new Date();
-  today.setHours(0,0,0,0);
-  const sorted = sortSchedules(list);
-  return (sorted.find(s=>new Date(`${s.dateISO}T00:00:00`) >= today) || sorted[sorted.length-1]).id;
-}
-function getSelectedSchedule(){
-  const selected = getScheduleById(state.selectedScheduleId);
-  if(selected) return selected;
-  const defaultId = getDefaultScheduleId(state.schedules);
-  return defaultId ? getScheduleById(defaultId) : null;
-}
-function geocodeWithKakaoServices(query){
-  return new Promise((resolve)=>{
-    if(!window.kakao?.maps?.services || !query){ resolve(null); return; }
-    const geocoder = new kakao.maps.services.Geocoder();
-    geocoder.addressSearch(query, (result, status)=>{
-      if(status !== kakao.maps.services.Status.OK || !result?.length){
-        resolve(null);
-        return;
-      }
-      resolve({
-        lat: parseFloat(result[0].y),
-        lng: parseFloat(result[0].x),
-      });
-    });
-  });
-}
-async function resolveScheduleCoords(schedule){
-  if(schedule?.lat && schedule?.lng) return { lat: schedule.lat, lng: schedule.lng };
-  const query = schedule?.address || schedule?.mapQuery || schedule?.location;
-  const resolved = await geocodeWithKakaoServices(query);
-  return resolved || { lat: 37.6583, lng: 126.8320 };
-}
-
-function formatScheduleTimeLabel(time){
-  const t = String(time || '').trim();
-  const m = t.match(/^(\d{1,2})-(\d{1,2})시$/);
-  if(!m) return t || '시간 미정';
-  const start = parseInt(m[1], 10);
-  const end = parseInt(m[2], 10);
-  const meridiem = start < 12 ? '오전' : '오후';
-  const displayStart = start > 12 ? start - 12 : start;
-  const displayEnd = end > 12 ? end - 12 : end;
-  return `${meridiem}${displayStart}시~${displayEnd}시`;
-}
-
-function formatScheduleHeadline(schedule){
-  if(!schedule) return '';
-  return `${schedule.month}월 ${schedule.day}일, ${schedule.location}, ${formatScheduleTimeLabel(schedule.time)}`;
-}
-function getNextUpcomingSchedule(){
-  const today = new Date();
-  today.setHours(0,0,0,0);
-  const sorted = sortSchedules(state.schedules);
-  return sorted.find(s=>new Date(`${s.dateISO}T00:00:00`) >= today) || null;
-}
-async function renderDashboardMap(){
-  if(state.activeTab !== 'dashboard') return;
-  const schedule = getNextUpcomingSchedule();
-  const container = document.getElementById('dashboard-kakao-map-canvas');
-  if(!schedule || !container) return;
-  try{
-    await ensureKakaoSdkLoaded();
-    const { lat, lng } = await resolveScheduleCoords(schedule);
-    const map = new kakao.maps.Map(container, {
-      center: new kakao.maps.LatLng(lat, lng),
-      level: 5
-    });
-    const marker = new kakao.maps.Marker({ position: new kakao.maps.LatLng(lat, lng) });
-    marker.setMap(map);
-  }catch(err){
-    console.error(err);
-  }
-}
-async function openMapModal(scheduleId){
-  const schedule = getScheduleById(scheduleId);
-  if(!schedule) return;
-  setState({ ui:{...state.ui, mapOpen:true, mapScheduleId:scheduleId }});
-  await new Promise(r=>setTimeout(r, 0));
-  const container = document.getElementById('kakao-map-canvas');
-  if(!container) return;
-  try{
-    await ensureKakaoSdkLoaded();
-    const { lat, lng } = await resolveScheduleCoords(schedule);
-    const map = new kakao.maps.Map(container, {
-      center: new kakao.maps.LatLng(lat, lng),
-      level: 4
-    });
-    const marker = new kakao.maps.Marker({ position: new kakao.maps.LatLng(lat, lng) });
-    marker.setMap(map);
-  }catch(err){
-    console.error(err);
-    toast("⚠️ 카카오 지도 로드 실패: JavaScript 키/도메인 설정 확인");
-  }
-}
-function closeMapModal(){
-  setState({ ui:{...state.ui, mapOpen:false, mapScheduleId:null }});
-}
-function getUpcomingSchedule(){
-  const today = new Date();
-  today.setHours(0,0,0,0);
-  const sorted = sortSchedules(state.schedules);
-  return sorted.find(s=>new Date(`${s.dateISO}T00:00:00`) >= today) || null;
-}
-function currentWeekConfig(){
-  const key = weekKeyFromOffset(state.weekOffset);
-  if(!state.weeklyConfig[key]) state.weeklyConfig[key] = { attendance:{}, positions:{} };
-  return { key, cfg: state.weeklyConfig[key] };
-}
-function applyWeeklySettings(players){
-  const { cfg } = currentWeekConfig();
-  return players.map(p=>({
-    ...p,
-    isPresent: cfg.attendance[p.id] ?? false,
-    position: cfg.positions[p.id] || p.position || 'MF',
-  }));
-}
-
-// --- GOOGLE SHEETS API ---
-function gapiLoad() {
-    gapi.load('client', initializeGapiClient);
-}
-
-function initializeGapiClient() {
-    gapi.client.init({
-        apiKey: API_KEY,
-        discoveryDocs: DISCOVERY_DOCS,
-    }).then(() => {
-        gapiInited = true;
-        maybeEnableButtons();
-    }, (err) => {
-        console.error("GAPI 클라이언트 초기화 실패!", err);
-        setState({ saveStatus: "❌ Google API 초기화 실패." });
-    });
-}
-
-function gisLoad() {
-    try {
-        tokenClient = google.accounts.oauth2.initTokenClient({
-            client_id: CLIENT_ID,
-            scope: SCOPES,
-            callback: (tokenResponse) => {
-                if (tokenResponse && tokenResponse.access_token) {
-                    gapi.client.setToken(tokenResponse);
-                    setState({ isGapiSignedIn: true });
-                }
-            },
-        });
-        gisInited = true;
-        maybeEnableButtons();
-    } catch (e) {
-        console.error("GIS 초기화 중 에러 발생:", e);
-    }
-}
-
-function maybeEnableButtons() {
-    if (gapiInited && gisInited) {
-        setState({ isGapiLoaded: true });
-        // 로그인 상태와 관계없이 읽기 권한으로 경기 기록을 가져옵니다.
-        loadAllDataFromSheets(); 
-    }
-}
-
-function handleAuthClick() {
-    tokenClient.requestAccessToken({ prompt: '' });
-}
-
-function handleSignoutClick() {
-    const token = gapi.client.getToken();
-    if (token !== null) {
-        google.accounts.oauth2.revoke(token.access_token);
-        gapi.client.setToken('');
-        setState({ isGapiSignedIn: false });
-    }
-}
-
-/**
- * 변경: Google Sheets에서 '경기 기록 (Matches)'만 읽기 권한으로 가져옵니다.
- * 이 함수는 API_KEY를 사용하므로, 시트가 '웹에 공개'되어야 합니다.
- */
-async function loadAllDataFromSheets() {
-  setState({ saveStatus: "🔄 Google Sheets에서 경기 기록을 불러오는 중..." });
-  try {
-    const matchesResponse = await gapi.client.sheets.spreadsheets.values.get({ 
-        spreadsheetId: SPREADSHEET_ID, 
-        range: 'Matches!A2:H',
-        key: API_KEY // 공개 읽기 권한 사용
-    });
-    
-    const matchesRows = matchesResponse.result.values || [];
-    const matches = matchesRows.map(row => ({ 
-        id: row[0], 
-        date: row[1], 
-        opponent: row[2], 
-        location: row[3], 
-        result: row[4], 
-        goals: parseInt(row[5]) || 0, 
-        conceded: parseInt(row[6]) || 0, 
-        scorers: row[7] || '', 
-        score: `${row[5] || 0}-${row[6] || 0}` 
-    }));
-    
-    setState({ matches, saveStatus: "✅ 경기 기록 동기화 완료" });
-    setTimeout(() => setState({ saveStatus: "" }), 2000);
-  } catch (err) {
-    console.error("Error loading match data from sheets", err);
-    setState({ saveStatus: "❌ 경기 기록 로딩 실패. 시트 공개 설정을 확인하세요." });
-  }
-}
-
-// 경기 기록 저장 함수 (관리자 로그인 필요)
-async function addMatchToSheet(matchData) {
-  if (!state.isGapiSignedIn) {
-     toast("❌ Google에 로그인해야 경기 기록을 저장할 수 있습니다. 관리자 계정으로 로그인해주세요.");
-     return;
-  }
-    
-  const rowData = [
-    new Date().getTime().toString(), // 임시 ID
-    matchData.date,
-    matchData.opponent,
-    matchData.location,
-    matchData.result,
-    matchData.goals.toString(),
-    matchData.conceded.toString(),
-    matchData.scorers,
-  ];
-
-  try {
-    const response = await gapi.client.sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID,
-      range: 'Matches!A2:H', // Matches 시트에 저장
-      valueInputOption: 'USER_ENTERED',
-      resource: { values: [rowData] },
-    });
-
-    // 저장 후, 최신 데이터를 다시 불러와 UI를 업데이트합니다.
-    await loadAllDataFromSheets(); 
-    
-    // 새 경기 입력 필드 초기화
-    setState({ 
-      newMatch: { opponent:"", location:"", date:"", result:"", goals:0, conceded:0, scorers:"" },
-      saveStatus: `✅ 경기 기록 저장 완료: ${matchData.opponent} (${matchData.result})` 
-    });
-    
-    setTimeout(() => setState({ saveStatus: "" }), 2500);
-
-  } catch (err) {
-    console.error("경기 데이터 시트 저장 실패:", err);
-    setState({ saveStatus: "❌ 경기 기록 저장 실패. 시트의 쓰기 권한을 확인해주세요." });
-  }
-}
-
-
-function hasFirebaseConfig(){
-  return !!(FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId && window.firebase);
-}
-function getAttendanceCollection(){
-  if(!firestoreDb) return null;
-  return firestoreDb.collection(FIREBASE_ATTENDANCE_COLLECTION);
-}
-function mergeSchedulesWithCloudAttendance(baseSchedules, cloudRows){
-  const cloudMap = Object.fromEntries((cloudRows || []).map(row=>[row.id, row]));
-  return (baseSchedules || []).map(s=>{
-    const cloud = cloudMap[s.id];
-    if(!cloud) return s;
-    return { ...s, attendees: Array.isArray(cloud.attendees) ? cloud.attendees : s.attendees, quarters: cloud.quarters || [null,null,null,null] };
-  });
-}
-async function loadCloudAttendance(){
-  const col = getAttendanceCollection();
-  if(!col) return [];
-  const snapshot = await col.get();
-  return snapshot.docs.map(doc=>({ id: doc.id, ...doc.data() }));
-}
-async function syncAllSchedulesToCloud(){
-  const col = getAttendanceCollection();
-  if(!col) return;
-  const jobs = state.schedules.map(s=> col.doc(s.id).set({
-    scheduleId: s.id,
-    attendees: s.attendees || [],
-    month: s.month,
-    day: s.day,
-    location: s.location,
-    updatedAt: new Date().toISOString(),
-  }, { merge:true }));
-  await Promise.all(jobs);
-}
-async function syncPlayerPositionsToCloud(){
-  if(!firestoreDb) return;
-  const positions = {};
-  state.players.forEach(p=>{ positions[p.id] = p.position || "MF"; });
-  await firestoreDb.collection("player_positions").doc("positions").set({ positions, updatedAt: new Date().toISOString() });
-}
-async function loadCloudPlayerPositions(){
-  if(!firestoreDb) return null;
-  const doc = await firestoreDb.collection("player_positions").doc("positions").get();
-  return doc.exists ? doc.data().positions : null;
-}
-async function syncScheduleAttendanceToCloud(schedule){
-  const col = getAttendanceCollection();
-  if(!col || !schedule) return;
-  await col.doc(schedule.id).set({
-    scheduleId: schedule.id,
-    attendees: schedule.attendees || [],
-    month: schedule.month,
-    day: schedule.day,
-    location: schedule.location,
-    updatedAt: new Date().toISOString(),
-  }, { merge:true });
-}
-async function initFirebaseSync(){
-  if(!FIREBASE_SYNC_ENABLED){
-    setState({ cloudSyncStatus: 'Firebase 동기화 비활성화' });
-    return;
-  }
-  if(!hasFirebaseConfig()){
-    setState({ cloudSyncStatus: 'Firebase 설정이 없어 로컬 저장만 사용 중' });
-    return;
-  }
-  try{
-    if(!firebase.apps.length){
-      firebaseApp = firebase.initializeApp(FIREBASE_CONFIG);
-    } else {
-      firebaseApp = firebase.app();
-    }
-    firestoreDb = firebase.firestore();
-
-    const cloudPositions = await loadCloudPlayerPositions();
-      if(cloudPositions){
-      const players = state.players.map(p=>({ ...p, position: cloudPositions[p.id] || p.position || "MF" }));
-      setState({ players });
-    }
-    const col = getAttendanceCollection();
-    col.onSnapshot((snapshot) => {
-      const cloudRows = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      if(cloudRows.length){
-        const merged = mergeSchedulesWithCloudAttendance(state.schedules, cloudRows);
-        setState({ schedules: merged, cloudSyncEnabled: true, cloudSyncStatus: `Firebase 동기화 연결됨 (${FIREBASE_CONFIG.projectId})` });
-        saveLocalData();
-        if(state.selectedScheduleId){
-          handleScheduleChange(state.selectedScheduleId);
-        }
-      } else {
-        syncAllSchedulesToCloud();
-        setState({ cloudSyncEnabled: true, cloudSyncStatus: `Firebase 동기화 시작됨 (${FIREBASE_CONFIG.projectId})` });
-      }
-    });
-  } catch(err){
-    console.error('Firebase 동기화 초기화 실패', err);
-    setState({ cloudSyncStatus: 'Firebase 동기화 실패 - 로컬 모드로 동작' });
-  }
-}
-// --- LOCAL STORAGE (for formation/quarters) ---
-function saveLocalData(){
-  const data = {
-    formation: state.formation,
-    quarters: state.quarters,
-    currentQuarter: state.currentQuarter,
-    weeklyConfig: state.weeklyConfig,
-    weekOffset: state.weekOffset,
-    personalRecords: state.personalRecords,
-    schedules: state.schedules,
-    selectedScheduleId: state.selectedScheduleId,
-    selectedMonth: state.selectedMonth,
-    showPastMonths: state.showPastMonths,
-    kakaoRestKey: state.kakaoRestKey,
-    kakaoJsKey: state.kakaoJsKey,
-    scheduleInput: state.scheduleInput,
-    savedAt: new Date().toISOString()
-  };
-  localStorage.setItem('hwarangLocalData', JSON.stringify(data));
-}
-function loadLocalData(){
-  const saved = localStorage.getItem('hwarangLocalData');
-  const savedData = saved ? safeJSON(saved, null) : null;
-  if(savedData){
-    setState({
-      formation: savedData.formation || state.formation,
-      quarters: savedData.quarters || [null,null,null,null],
-      currentQuarter: savedData.currentQuarter || 1,
-      weeklyConfig: savedData.weeklyConfig || {},
-      weekOffset: savedData.weekOffset || 0,
-      personalRecords: savedData.personalRecords || {},
-      schedules: savedData.schedules || [],
-      selectedScheduleId: savedData.selectedScheduleId || null,
-      selectedMonth: savedData.selectedMonth || state.selectedMonth,
-      showPastMonths: savedData.showPastMonths || false,
-      kakaoRestKey: savedData.kakaoRestKey || "",
-      kakaoJsKey: savedData.kakaoJsKey || "",
-      scheduleInput: savedData.scheduleInput || state.scheduleInput,
-    });
-  }
-}
-
-/**
- * 구성원 목록은 members.json 파일에서 로드합니다.
- */
-async function loadLocalMembersJson() {
-    try {
-        const response = await fetch('members.json');
-        if (!response.ok) {
-            console.warn("로컬 members.json 파일을 찾을 수 없습니다. 구성원 목록이 비어 있습니다.");
-            return;
-        }
-        const data = await response.json();
-        const players = data.members.map((name, index) => ({ 
-            id: index + 1,
-            name: sanitizeName(name), 
-            position: 'MF', // JSON 파일에 포지션 정보가 없으므로 기본값 MF 설정
-            isPresent: false, 
-        }));
-        
-        setState({ players: applyWeeklySettings(players) });
-    } catch (err) {
-        console.error("로컬 members.json 파일 로드 및 처리 실패:", err);
-    }
-}
-
-
-// --- PLAYER / ATTEND ---
-function persistWeeklyPlayers(players){
-  const { key, cfg } = currentWeekConfig();
-  const attendance = { ...cfg.attendance };
-  const positions = { ...cfg.positions };
-  players.forEach(p=>{ attendance[p.id] = !!p.isPresent; positions[p.id] = p.position || 'MF'; });
-  const weeklyConfig = { ...state.weeklyConfig, [key]: { attendance, positions } };
-  setState({ players, weeklyConfig });
-  saveLocalData();
-}
-function toggleAttendance(id){
-  const players = state.players.map(p=> p.id===id ? {...p, isPresent:!p.isPresent} : p );
-  persistWeeklyPlayers(players);
-}
-function clearAllAttendance(){
-  const players = state.players.map(p=>({...p, isPresent:false}));
-  persistWeeklyPlayers(players);
-}
-function updatePlayerPosition(id, position){
-  const players = state.players.map(p=> p.id===id ? {...p, position} : p );
-  persistWeeklyPlayers(players);
-  if(state.cloudSyncEnabled) syncPlayerPositionsToCloud().catch(e=>console.error(e));
-}
-
-
-
-
-function shiftWeek(delta){
-  const weekOffset = state.weekOffset + delta;
-  const key = weekKeyFromOffset(weekOffset);
-  const cfg = state.weeklyConfig[key] || { attendance:{}, positions:{} };
-  const players = state.players.map(p=>({
-    ...p,
-    isPresent: cfg.attendance[p.id] ?? false,
-    position: cfg.positions[p.id] || p.position || 'MF',
-  }));
-  setState({ weekOffset, players });
-  saveLocalData();
-}
-function copyPreviousWeek(){
-  const prevKey = weekKeyFromOffset(state.weekOffset - 1);
-  const curKey = weekKeyFromOffset(state.weekOffset);
-  const prev = state.weeklyConfig[prevKey];
-  if(!prev){ toast('⚠️ 이전 주차 데이터가 없습니다'); return; }
-  const weeklyConfig = { ...state.weeklyConfig, [curKey]: JSON.parse(JSON.stringify(prev)) };
-  const cfg = weeklyConfig[curKey];
-  const players = state.players.map(p=> ({ ...p, isPresent: cfg.attendance[p.id] ?? false, position: cfg.positions[p.id] || 'MF' }));
-  setState({ weeklyConfig, players, saveStatus:'✅ 지난주 설정을 복사했습니다' });
-  saveLocalData();
-}
-function requestAdminAccess(){
-  if(state.adminUnlocked) return true;
-  const pw = window.prompt("관리자 비밀번호를 입력하세요");
-  if(pw === ADMIN_PASSWORD){
-    setState({ adminUnlocked: true, activeTab: 'admin' });
-    toast("✅ 관리자 권한이 활성화되었습니다");
-    return true;
-  }
-  toast("⛔ 비밀번호가 올바르지 않습니다");
-  return false;
-}
-function setActiveTab(tab){
-  if(tab === 'admin'){
-    requestAdminAccess();
-    return;
-  }
-  setState({activeTab:tab});
-}
-function handleScheduleChange(id){
-  const emptyFormation = { gk:[null], def:[null,null,null,null], dmf:[null,null], cmf:[null,null,null], amf:[null,null], fw:[null] };
-  const cloudData = state.schedules.find(s => s.id === id);
-  setState({
-    selectedScheduleId: id,
-    quarters: cloudData?.quarters || [null,null,null,null],
-    formation: cloudData?.quarters?.[state.currentQuarter-1] || emptyFormation
-  });
-}
-function getPresentPlayers(){
-  const selected = getSelectedSchedule();
-  if(!selected) return [];
-  return state.players.filter(p=>selected.attendees.includes(p.id));
-}
-
-// --- MATCH ---
-function updateNewMatch(field,v){ setState({ newMatch:{...state.newMatch,[field]:v} }); }
-function addMatch(){ const m = state.newMatch; if(!(m.opponent && m.location && m.date)) { toast("⚠️ 상대팀, 경기장, 날짜를 모두 입력해주세요"); return; } const matchDate = new Date(m.date); const today = new Date(); today.setHours(0, 0, 0, 0); if (matchDate < today) { toast("⚠️ 과거 날짜는 선택할 수 없습니다"); return; } const goals = Math.max(0, parseInt(m.goals) || 0); const conceded = Math.max(0, parseInt(m.conceded) || 0); if (state.isGapiSignedIn) { addMatchToSheet({ ...m, goals, conceded }); } else { toast("⚠️ Google에 로그인해야 저장할 수 있습니다."); } }
-function teamStats(){ const ms = state.matches, matches=ms.length; const wins=ms.filter(m=>m.result==="W").length, draws=ms.filter(m=>m.result==="D").length, losses=ms.filter(m=>m.result==="L").length; const goalsFor=ms.reduce((s,m)=>s+m.goals,0), goalsAgainst=ms.reduce((s,m)=>s+m.conceded,0), cleanSheets=ms.filter(m=>m.conceded===0).length; return { matches,wins,draws,losses,goalsFor,goalsAgainst,cleanSheets, winRate: matches?((wins/matches)*100).toFixed(1):0, avgGoalsFor: matches?(goalsFor/matches).toFixed(2):0, avgGoalsAgainst: matches?(goalsAgainst/matches).toFixed(2):0, cleanSheetRate: matches?((cleanSheets/matches)*100).toFixed(1):0 }; }
-
-function recFor(id){ return state.personalRecords[id] || defaultPersonalRecord(); }
-function updatePersonalRecord(id, field, value){
-  const current = recFor(id);
-  const next = { ...current, [field]: field==='note' ? value : Math.max(0, parseInt(value) || 0) };
-  const personalRecords = { ...state.personalRecords, [id]: next };
-  setState({ personalRecords });
-  saveLocalData();
-}
-function topScorers(){
-  return state.players
-    .map(p=>({ ...p, goals: recFor(p.id).goals || 0 }))
-    .sort((a,b)=>b.goals-a.goals)
-    .slice(0,5);
-}
-function initSchedulesFromInput(force=false){
-  if(state.schedules.length && !force) return;
-  const parsed = parseScheduleInput(state.scheduleInput);
-  setState({ schedules: parsed, selectedMonth: pickDefaultMonth(parsed), selectedScheduleId: getDefaultScheduleId(parsed) });
-}
-async function applyScheduleInput(){
-  const prevMap = Object.fromEntries(state.schedules.map(s=>[s.id, s]));
-  const base = parseScheduleInput(state.scheduleInput).map((s)=>({
-    ...s,
-    attendees: prevMap[s.id]?.attendees || [],
-  }));
-  const parsed = [];
-  for(const item of base){
-    const geo = await geocodeLocation(item.mapQuery || item.address || item.location);
-    parsed.push({
-      ...item,
-      lat: geo?.lat ?? null,
-      lng: geo?.lng ?? null,
-      mapUrl: geo?.mapUrl || item.mapUrl,
-    });
-  }
-  setState({ schedules: parsed, selectedMonth: pickDefaultMonth(parsed), selectedScheduleId: getDefaultScheduleId(parsed), saveStatus: "✅ 일정이 업데이트되었습니다" });
-  saveLocalData();
-  if(state.cloudSyncEnabled){
-    await syncAllSchedulesToCloud();
-  }
-}
-function toggleScheduleAttendance(scheduleId, playerId){
-  const schedules = state.schedules.map(s=>{
-    if(s.id !== scheduleId) return s;
-    const has = s.attendees.includes(playerId);
-    return { ...s, attendees: has ? s.attendees.filter(id=>id!==playerId) : [...s.attendees, playerId] };
-  });
-  setState({ schedules });
-  saveLocalData();
-  const updated = schedules.find(s=>s.id===scheduleId);
-  if(state.cloudSyncEnabled && updated){
-    syncScheduleAttendanceToCloud(updated).catch((err)=>console.error('참석 동기화 실패', err));
-  }
-}
-function saveData(){ saveLocalData(); toast('✅ 로컬 저장 완료'); }
-function downloadBackup(){
-  const payload = {
-    exportedAt: new Date().toISOString(),
-    localData: safeJSON(localStorage.getItem('hwarangLocalData') || '{}', {}),
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = `hwarang-backup-${weekKeyFromOffset(state.weekOffset)}.json`;
-  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-}
-
-// --- QUARTERS ---
-function saveCurrentFormation(){
-  const total = Object.values(state.formation).flat().filter(Boolean).length;
-  if(total !== 11) {
-    toast("⚠️ 11명을 정확히 배치해야 저장할 수 있습니다.");
-    return;
-  }
-  
-  const copy = deepCopyFormation(state.formation);
-  const idx = state.currentQuarter - 1;
-  const quarters = state.quarters.slice();
-  quarters[idx] = copy;
-  const nextQuarter = state.currentQuarter >= 4 ? 1 : state.currentQuarter + 1;
-  
-  const sel = getSelectedSchedule();
-  const updatedSchedules = state.schedules.map(s => s.id === sel?.id ? { ...s, quarters: quarters } : s);
-  
-  setState({ quarters, currentQuarter: nextQuarter, schedules: updatedSchedules, saveStatus:`💾 ${idx + 1}쿼터가 저장되었습니다 → ${nextQuarter}쿼터로 이동` });
-  
-  saveLocalData();
-  
-  setTimeout(()=>setState({saveStatus:""}),2500);
-  
-if(state.cloudSyncEnabled && sel){
-    const col = getAttendanceCollection();
-    if(col) col.doc(sel.id).set({ quarters: quarters }, { merge:true });
-  }
-}
-
-function loadQuarter(n){ const q = state.quarters[n-1]; if(!q) return; setState({ formation: deepCopyFormation(q), currentQuarter:n, saveStatus:`📋 ${n}쿼터 포메이션을 불러왔습니다` }); setTimeout(()=>setState({saveStatus:""}),1500); }
-function clearQuarter(n){ 
-  const quarters = state.quarters.slice(); 
-  quarters[n-1] = null; 
-  const sel = getSelectedSchedule();
-  const updatedSchedules = state.schedules.map(s => s.id === sel?.id ? { ...s, quarters: quarters } : s);
-  const emptyFormation = { gk: [null], def: [null,null,null,null], dmf: [null,null], cmf: [null,null,null], amf: [null,null], fw: [null] };
-  setState({ 
-    quarters, schedules: updatedSchedules, currentQuarter: n,
-    formation: state.currentQuarter === n ? emptyFormation : state.formation,
-    saveStatus:`🗑️ ${n}쿼터가 삭제되었습니다` 
-  }); 
-  setTimeout(()=>setState({saveStatus:""}),1500);
-  if(state.cloudSyncEnabled && sel){
-    const col = getAttendanceCollection();
-    if(col) col.doc(sel.id).set({ quarters: quarters }, { merge:true });
-  }
-  saveLocalData();
-}
-function clearFormation(){ const emptyFormation = { gk: [null], def: [null,null,null,null], dmf: [null,null], cmf: [null,null,null], amf: [null,null], fw: [null] }; setState({ formation: emptyFormation, saveStatus:"🧹 현재 포메이션이 초기화되었습니다" }); setTimeout(()=>setState({saveStatus:""}),1500); }
-function getSavedQuartersCount(){ return state.quarters.filter(q => q !== null).length; }
-function quartersPlayedCount(playerId){ return state.quarters.reduce((acc,q)=>{ if(!q) return acc; const found = Object.values(q).flat().some(p=>p && p.id===playerId); return acc + (found?1:0); },0); }
-
-// --- DnD + Tap-to-Assign ---
-function fieldCount(f){ return Object.values(f).flat().filter(Boolean).length; }
-function handleDragStart(ev, playerId){ const player = state.players.find(p=>p.id===playerId); state.draggedPlayer = player; ev.dataTransfer.effectAllowed = "move"; ev.currentTarget.classList.add("dragging"); }
-function handleDragEnd(ev){ ev.currentTarget.classList.remove("dragging"); state.draggedPlayer=null; }
-function handleDragOver(ev){ ev.preventDefault(); ev.dataTransfer.dropEffect="move"; ev.currentTarget.classList.add("drag-over"); }
-function handleDragLeave(ev){ ev.currentTarget.classList.remove("drag-over"); }
-function handleDrop(ev, position, slotIndex){ ev.preventDefault(); ev.currentTarget.classList.remove("drag-over"); const dragged = state.draggedPlayer; if(!dragged) return; const count = fieldCount(state.formation); const already = Object.values(state.formation).flat().some(p=>p && p.id===dragged.id); if(!already && count>=11){ toast("⚠️ 필드에는 최대 11명만 배치 가능합니다"); return; } if(state.formation[position][slotIndex] !== null) return; const formation = {...state.formation}; Object.keys(formation).forEach(k=>{ formation[k] = formation[k].map(x => x && x.id===dragged.id ? null : x); }); formation[position] = [...formation[position]]; formation[position][slotIndex] = dragged; setState({ formation }); state.draggedPlayer=null; }
-function removePlayerFromSlot(pos, idx, e){ if(e){ e.stopPropagation(); e.preventDefault(); } const formation = {...state.formation}; formation[pos] = [...formation[pos]]; formation[pos][idx]=null; setState({ formation, saveStatus:"✅ 선수가 제거되었습니다" }); setTimeout(()=>setState({saveStatus:""}),1000); }
-function openPicker(position, slotIndex){ state = {...state, ui:{ ...state.ui, pickerOpen:true, pickerPos:position, pickerSlot:slotIndex, pickerSearch:"" }}; render(); }
-function closePicker(){ setState({ ui:{...state.ui, pickerOpen:false, pickerPos:null, pickerSlot:null, pickerSearch:""} }); }
-function assignToSlot(playerId){ const {pickerPos:pos, pickerSlot:idx} = state.ui; if(pos==null) return; const formation = {...state.formation}; const count = fieldCount(formation); const already = Object.values(formation).flat().some(p=>p && p.id===playerId); if(!already && count>=11){ toast("⚠️ 필드에는 최대 11명만 배치 가능합니다"); return; } const player = state.players.find(p=>p.id===playerId); Object.keys(formation).forEach(k=>{ formation[k] = formation[k].map(x => x && x.id===playerId ? null : x); }); formation[pos] = [...formation[pos]]; formation[pos][idx] = player; setState({ formation }); closePicker(); }
-function unassignSlot(pos, idx, e){ if(e){ e.stopPropagation(); e.preventDefault(); } const formation = {...state.formation}; formation[pos] = [...formation[pos]]; formation[pos][idx]=null; setState({ formation }); }
-
-// --- UI ---
-function createApp(){ return `<div class="min-h-screen bg-gray-50">${createNav()}<main class="max-w-7xl mx-auto py-4 sm:py-6 px-3 sm:px-4 lg:px-8">${state.activeTab==='dashboard'? createDashboard():''}${state.activeTab==='attendance'? createAttendance():''}${state.activeTab==='matches'? createMatches():''}${state.activeTab==='formation'? createFormation():''}${state.activeTab==='members'? createMembers():''}${state.activeTab==='admin'? createAdmin():''}</main>${createBottomSheet()}${createMapModal()}</div>`; }
-
-// 변경: 'sync' 탭 제거됨
-function createNav(){ const tabs = [{id:'dashboard', name:'대시보드', icon:'barChart'},{id:'attendance', name:'참석', icon:'calendar'},{id:'formation', name:'포메이션', icon:'shield'},{id:'members', name:'구성원', icon:'users'},{id:'matches', name:'경기 기록', icon:'target'},{id:'admin', name:'관리자', icon:'save'}]; return `<nav class="bg-white shadow-sm border-b"><div class="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8"><div class="flex space-x-2 sm:space-x-6 overflow-x-auto nav-scroll py-2">${tabs.map(t=>`<button onclick="setActiveTab('${t.id}')" class="py-2 sm:py-3 px-2 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap flex items-center flex-shrink-0 ${state.activeTab===t.id?'border-blue-500 text-blue-600':'border-transparent text-gray-500 hover:text-gray-700'}"><span class="icon-lg mr-1">${icons[t.icon]}</span>${t.name}</button>`).join('')}</div></div></nav>`; }
-
-function createDashboard(){
-  const s = teamStats();
-  const today = new Date();
-  today.setHours(0,0,0,0);
-  const todayLabel = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-  const currentMonth = today.getMonth() + 1;
-  const months = getScheduleMonths();
-  const selectedMonth = currentMonth;
-  const nextUpcoming = getNextUpcomingSchedule();
-  const nextUpcomingId = nextUpcoming?.id || null;
-  const filtered = sortSchedules(state.schedules)
-    .filter(v=>v.month===selectedMonth)
-    .filter(v=>{
-      const d = new Date(`${v.dateISO}T00:00:00`);
-      if(selectedMonth < currentMonth) return state.showPastMonths;
-      if(selectedMonth === currentMonth) return d >= today || state.showPastMonths;
-      return true;
-    });
-  const byDate = filtered.reduce((acc, cur)=>{
-    const key = `${cur.month}/${cur.day}`;
-    if(!acc[key]) acc[key] = [];
-    acc[key].push(cur);
-    return acc;
-  }, {});
-  const days = Object.keys(byDate);
-  return `<div class="space-y-4 sm:space-y-6">
-    <div class="bg-gradient-to-r from-green-500 to-blue-600 text-white p-4 sm:p-6 rounded-lg">
-      <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4">
-        <div class="flex items-center gap-3"><img src="assets/hwarang-logo.svg" alt="화랑FC 로고" class="w-12 h-12 sm:w-16 sm:h-16 object-contain rounded-full bg-white/10 p-1"/><div><h1 class="text-2xl sm:text-3xl font-bold mb-1 sm:mb-2">화랑 FC</h1><p class="text-sm sm:text-lg opacity-90">since 2010</p></div></div>
-      </div>
-      ${state.saveStatus?`<div class="mt-3 text-sm opacity-95 bg-white/15 px-4 py-3 rounded-lg font-medium border border-white/20">${state.saveStatus}</div>`:''}
-    </div>
-    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <div class="flex items-center justify-between gap-2 mb-3">
-        <h3 class="font-semibold text-lg">2025-26 일정</h3>
-        <button onclick="setState({activeTab:'attendance'})" class="text-sm text-blue-600 underline">참석관리</button>
-      </div>
-      <div class="text-sm text-gray-600 mb-2">오늘 날짜: <span class="font-semibold text-gray-900">${todayLabel}</span></div>
-      <div class="flex gap-2 overflow-x-auto pb-2">${months.map(m=>`<button onclick="setState({selectedMonth:${m}})" class="px-3 py-1 rounded-full text-sm border ${m===selectedMonth?'bg-blue-600 text-white border-blue-600':'bg-gray-50 text-gray-700 border-gray-200'}" ${m!==selectedMonth?'disabled title=\"대시보드에서는 현재 월만 표시\"':''}>${m}월</button>`).join('')}</div>
-      <div class="mt-2"><button onclick="setState({showPastMonths:!state.showPastMonths})" class="text-xs px-2 py-1 rounded border bg-gray-50">${state.showPastMonths?'지난 일정 숨기기':'지난 일정 보기'}</button></div>
-      <div class="mt-3 border rounded-lg p-3 bg-gray-50">
-        <div class="flex items-center justify-between">
-          <div class="font-semibold">이번주 일정</div>
-          <button onclick="requestAdminAccess()" class="text-sm font-semibold text-blue-600 underline">관리자 수정</button>
+  <div data-screen-label="헤더" style="position:sticky; top:0; z-index:100; background:#FFFFFF; border-bottom:1px solid #EAEAE6;">
+    <div style="max-width:1120px; margin:0 auto; padding:{{ ui.headPad }}; display:flex; align-items:center; gap:24px;">
+      <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
+        <img src="assets/hwarang-logo.svg" alt="화랑 FC" style="width:{{ ui.logo }}; height:{{ ui.logo }}; display:block;">
+        <div>
+          <div style="font-size:{{ ui.title }}; font-weight:800; letter-spacing:-.3px; line-height:1.15;">화랑 FC</div>
+          <div style="font-size:12px; color:#8A6D1F; font-weight:700; letter-spacing:.4px;">since 2010</div>
         </div>
-        ${nextUpcoming ? `<div class="text-base sm:text-lg font-semibold text-gray-800 mt-2">${formatScheduleHeadline(nextUpcoming)}</div><div class="text-sm sm:text-base text-gray-600 mt-1">${nextUpcoming.address || '주소 미지정'}</div><div id="dashboard-kakao-map-canvas" class="w-full h-64 rounded-lg border mt-2"></div>${nextUpcoming.mapUrl ? `<a href="${nextUpcoming.mapUrl}" target="_blank" class="text-blue-600 underline text-sm mt-2 inline-block">카카오맵에서 크게보기</a>`:''}` : `<div class="text-sm text-gray-500 mt-2">다가오는 일정이 없습니다.</div>`}
       </div>
-      <div class="space-y-3 mt-3">
-        ${days.map(day=>`<div class="border rounded-lg overflow-hidden"><div class="px-4 py-2 bg-gray-50 font-semibold">${day}</div>${byDate[day].map(sch=>{const attendees = state.players.filter(p=>sch.attendees.includes(p.id)); const isHighlighted = sch.id === nextUpcomingId; return `<div class="px-4 py-3 border-t ${isHighlighted?'bg-yellow-50':'bg-white'}"><div class="grid grid-cols-1 sm:grid-cols-5 gap-2 items-center text-sm"><div class="font-semibold">${sch.time}</div><div class="sm:col-span-2 text-gray-700">${sch.location}<div class="text-xs text-gray-500">${sch.address || '주소 미지정'}</div></div><div class="font-medium">${sch.opponent}</div><div class="flex gap-2 sm:justify-end"><button onclick="handleScheduleChange('${sch.id}'); setActiveTab('attendance');" class="px-2 py-1 rounded border text-xs">참석 ${attendees.length}명</button><button onclick="openMapModal('${sch.id}')" class="px-2 py-1 rounded border text-xs">지도</button></div></div></div>`;}).join('')}</div>`).join('')}
-        ${!days.length ? `<div class="text-sm text-gray-500 py-8 text-center">선택된 월 일정이 없습니다.</div>` : ''}
-      </div>
-    </div>
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">${statCard("경기수", s.matches, "calendar","text-green-500")}${statCard("승률", s.winRate+"%", "barChart","text-blue-500")}${statCard("득점", s.goalsFor, "target","text-red-500")}${statCard("실점", s.goalsAgainst, "shield","text-purple-500")}</div>
-  </div>`;
-}
-function statCard(label,value,icon,color){ return `<div class="bg-white p-3 sm:p-4 rounded-lg shadow-md border-l-4 border-blue-400 hover:shadow-lg transition-shadow"><div class="flex items-center justify-between"><div><p class="text-gray-600 text-xs sm:text-sm font-medium">${label}</p><p class="text-lg sm:text-2xl font-bold text-gray-800 mt-1">${value}</p></div><div class="icon-lg ${color} flex-shrink-0">${icons[icon]}</div></div></div>`; }
-function createMatches(){
-  const top = topScorers();
-  return `<div class="space-y-4 sm:space-y-6">
-    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <div class="flex items-center justify-between gap-2 mb-3 sm:mb-4">
-        <h3 class="text-base sm:text-lg font-semibold flex items-center">${icons.target}<span class="ml-2">Top 득점자</span></h3>
-        <button onclick="requestAdminAccess()" class="text-sm text-blue-600 underline">관리자 수정</button>
-      </div>
-      ${top.length ? top.map((p,i)=>`<div class="flex items-center justify-between py-2 border-b last:border-0"><div class="flex items-center"><span class="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-bold mr-3">${i+1}</span><span class="text-sm sm:text-base font-medium">${p.name}</span><span class="ml-2 text-xs text-gray-500">(${p.position})</span></div><span class="text-sm sm:text-base font-bold text-blue-600">${p.goals}골</span></div>`).join('') : '<div class="text-gray-500 text-sm text-center py-4">득점 기록이 없습니다</div>'}
-    </div>
-    <div class="bg-white rounded-lg shadow-md"><h3 class="text-base sm:text-lg font-semibold p-4 sm:p-6 border-b">경기 기록</h3><div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-50"><tr><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">날짜</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">상대팀</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">장소</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">결과</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">스코어</th><th class="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">득점자</th></tr></thead><tbody class="divide-y divide-gray-200">${state.matches.map(m=>`<tr class="hover:bg-gray-50"><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">${m.date}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900">${m.opponent}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-500 hidden sm:table-cell">${m.location}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap"><span class="px-2 py-1 text-xs rounded-full ${m.result==='W'?'bg-green-100 text-green-800':m.result==='L'?'bg-red-100 text-red-800':'bg-yellow-100 text-yellow-800'}">${m.result==='W'?'승':m.result==='L'?'패':'무'}</span></td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm font-medium">${m.score}</td><td class="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-600">${m.scorers}</td></tr>`).join('')}</tbody></table></div></div>
-  </div>`;
-}
-function createAttendance(){
-  const schedules = sortSchedules(state.schedules);
-  const selected = getSelectedSchedule();
-  if(!selected && schedules.length){
-    setTimeout(()=>setState({ selectedScheduleId: getDefaultScheduleId(schedules) }), 0);
-  }
-  return `<div class="space-y-4 sm:space-y-6">
-    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <div class="flex items-center justify-between gap-2">
-        <h3 class="text-base sm:text-lg font-semibold">참석 체크</h3>
-        <button onclick="setState({activeTab:'formation'})" class="text-sm text-blue-600 underline">포메이션으로</button>
-      </div>
-      <div class="text-xs text-gray-500 mt-1">오늘 기준 가장 가까운 일정이 자동 선택됩니다.</div>
-      <div class="mt-3 flex gap-2 overflow-x-auto pb-2">
-        ${schedules.map(s=>`<button onclick="handleScheduleChange('${s.id}')" class="px-3 py-2 rounded-lg border text-sm whitespace-nowrap ${selected?.id===s.id?'bg-blue-600 text-white border-blue-600':'bg-white'}">${s.month}/${s.day} ${s.time}</button>`).join('')}
-      </div>
-      ${selected ? `<div class="mt-3 p-3 rounded-lg border bg-gray-50"><div class="font-semibold">${selected.month}/${selected.day} · ${selected.location}</div><div class="text-xs text-gray-500">${selected.address || '주소 미지정'}</div><div class="text-sm mt-1">상대: ${selected.opponent}</div></div>` : `<div class="mt-3 text-sm text-gray-500">일정을 먼저 등록해주세요.</div>`}
-    </div>
-    ${selected ? `<div class="bg-white p-4 sm:p-6 rounded-lg shadow-md"><div class="text-sm text-gray-600 mb-2">참석자 선택 (${selected.attendees.length}명)</div><div class="flex flex-wrap gap-2">${state.players.map(p=>`<button onclick="toggleScheduleAttendance('${selected.id}', ${p.id})" class="px-2 py-1 text-xs rounded-full border ${selected.attendees.includes(p.id) ? 'bg-green-100 border-green-300 text-green-800' : 'bg-gray-50 border-gray-200 text-gray-600'}">${p.name}</button>`).join('')}</div></div>` : ''}
-  </div>`;
-}
-function createAdmin(){
-  const schedules = sortSchedules(state.schedules);
-  const today = new Date(); today.setHours(0,0,0,0);
-  return `<div class="space-y-4 sm:space-y-6">
-    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <h3 class="text-base sm:text-lg font-semibold mb-2">관리자: 카톡 일정 붙여넣기</h3>
-      <p class="text-xs sm:text-sm text-gray-600 mb-3">예: 4/11 충장(vs 나눔) 7-10시 형식으로 줄바꿈 입력하면 자동 파싱됩니다.</p>
-      <p class="text-xs text-gray-500 mb-2">권장: <code>config.example.js</code>를 복사해 <code>config.firebase.js</code>를 만들고 키를 관리하세요 (저장소 커밋 금지).</p><p class="text-xs text-gray-500 mb-2">클라우드 동기화: <span class="font-semibold">${state.cloudSyncStatus || '미연결'}</span></p>
-      <div class="grid grid-cols-1 sm:grid-cols-5 gap-2 mb-3">
-        <input class="border rounded-lg px-3 py-2 text-sm sm:col-span-2" placeholder="Kakao REST API Key (주소→좌표 변환용)" value="${state.kakaoRestKey}" oninput="setState({kakaoRestKey:this.value})">
-        <input class="border rounded-lg px-3 py-2 text-sm sm:col-span-2" placeholder="Kakao JavaScript Key (지도 렌더링용)" value="${state.kakaoJsKey}" oninput="setState({kakaoJsKey:this.value})">
-        <button onclick="saveData()" class="border rounded-lg px-3 py-2 text-sm bg-gray-50">키 저장</button>
-      </div>
-      <textarea class="w-full border rounded-lg p-3 text-sm min-h-[180px]" oninput="setState({scheduleInput:this.value})">${state.scheduleInput}</textarea>
-      <div class="mt-3 flex gap-2">
-        <button onclick="applyScheduleInput()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">일정 반영</button>
-        <button onclick="setState({activeTab:'dashboard'})" class="bg-gray-100 px-4 py-2 rounded-lg text-sm">대시보드로</button>
+      <div style="display:{{ ui.topTabs }}; gap:4px; align-self:stretch;">
+        <sc-for list="{{ tabs }}" as="t">
+          <div onClick="{{ t.onClick }}" style="display:flex; align-items:center; padding:0 18px; cursor:pointer; font-size:15px; font-weight:{{ t.weight }}; color:{{ t.color }}; border-bottom:3px solid {{ t.bar }}; margin-bottom:-1px;">{{ t.label }}</div>
+        </sc-for>
       </div>
     </div>
-    <div class="space-y-3">
-      ${schedules.map(s=>{
-        const d = new Date(`${s.dateISO}T00:00:00`);
-        const isPast = d < today;
-        const attendees = state.players.filter(p=>s.attendees.includes(p.id));
-        return `<div class="bg-white p-4 rounded-lg shadow-md border ${isPast ? 'border-gray-200' : 'border-blue-200'}">
-          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div>
-              <div class="font-semibold">${s.month}/${s.day} · ${s.time}</div>
-              <div class="text-sm text-gray-600">${s.location} <button onclick="openMapModal('${s.id}')" class="text-blue-600 underline ml-1">카카오맵</button></div>
-              <div class="text-xs text-gray-500">${s.address || '주소 미지정'}</div>
-              <div class="text-sm text-gray-600">상대: ${s.opponent}</div>
-            </div>
-            <div class="text-sm font-medium ${isPast ? 'text-gray-500' : 'text-blue-700'}">${isPast ? '지난 일정' : '예정 일정'}</div>
+  </div>
+
+  <sc-if value="{{ showNotice }}">
+  <div style="max-width:1120px; margin:0 auto; padding:{{ ui.mainPad }};">
+    <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:28px 18px; text-align:center;">
+      <div style="font-size:15px; font-weight:800;">{{ notice.title }}</div>
+      <div style="font-size:13px; color:#5F5F5F; margin-top:6px; line-height:1.5;">{{ notice.text }}</div>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ homeReady }}">
+  <div data-screen-label="홈" style="max-width:1120px; margin:0 auto; padding:{{ ui.mainPad }}; display:grid; grid-template-columns:{{ ui.homeCols }}; grid-template-areas:{{ ui.homeAreas }}; gap:{{ ui.gap }}; align-items:start;">
+
+    <div style="grid-area:a; display:flex; flex-direction:column; gap:{{ ui.gap }}; min-width:0;">
+
+      <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; overflow:hidden;">
+        <div style="padding:{{ ui.cardPad }};">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <span style="background:#C71F10; color:#FFFFFF; font-size:13px; font-weight:800; padding:4px 10px; border-radius:8px; letter-spacing:.3px;">{{ next.dday }}</span>
+            <span style="font-size:13px; font-weight:700; color:#5F5F5F;">다가오는 경기</span>
+            <sc-if value="{{ next.hasOpp }}">
+              <span style="font-size:13px; font-weight:800; color:#141414; background:#F6F0DC; padding:4px 10px; border-radius:8px;">vs {{ next.opponent }}</span>
+            </sc-if>
           </div>
-          <div class="mt-3 text-xs text-gray-600">참석 인원: ${attendees.length}명 (참석 탭에서 관리)</div>
-        </div>`;
-      }).join('')}
-      ${!schedules.length ? `<div class="text-center py-8 text-sm text-gray-500 bg-white rounded-lg shadow">일정이 없습니다. 위 입력창에서 붙여넣고 반영하세요.</div>` : ''}
-    </div>
-    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <h3 class="text-base sm:text-lg font-semibold mb-3">관리자: 경기 결과 등록</h3>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-        <input class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="상대팀" value="${state.newMatch.opponent}" onchange="updateNewMatch('opponent', this.value)">
-        <input class="border rounded-lg px-3 py-2 w-full text-sm sm:text-base" placeholder="경기장" value="${state.newMatch.location}" onchange="updateNewMatch('location', this.value)">
-        <input type="date" class="border rounded-lg px-3 py-2 text-sm sm:text-base" value="${state.newMatch.date}" onchange="updateNewMatch('date', this.value)">
-        <select class="border rounded-lg px-3 py-2 text-sm sm:text-base" value="${state.newMatch.result}" onchange="updateNewMatch('result', this.value)"><option value="">결과 선택</option><option value="W">승리</option><option value="D">무승부</option><option value="L">패배</option></select>
-        <input type="number" class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="팀 득점" value="${state.newMatch.goals}" onchange="updateNewMatch('goals', parseInt(this.value)||0)">
-        <input type="number" class="border rounded-lg px-3 py-2 text-sm sm:text-base" placeholder="팀 실점" value="${state.newMatch.conceded}" onchange="updateNewMatch('conceded', parseInt(this.value)||0)">
-        <input class="border rounded-lg px-3 py-2 text-sm sm:text-base lg:col-span-3" placeholder="득점자 (쉼표로 구분)" value="${state.newMatch.scorers}" onchange="updateNewMatch('scorers', this.value)">
-      </div>
-      <button onclick="addMatch()" class="mt-3 sm:mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center text-sm sm:text-base">${state.isGapiSignedIn ? icons.plus : icons.shield}<span class="ml-1">${state.isGapiSignedIn ? '경기 추가' : '로그인 필요'}</span></button>
-      ${!state.isGapiSignedIn && state.isGapiLoaded ? `<button onclick="handleAuthClick()" class="ml-3 mt-3 sm:mt-4 bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 text-sm">저장 권한 얻기</button>` : ''}
-    </div>
-  </div>`;
-}
-function createMapModal(){
-  if(!state.ui.mapOpen) return '';
-  const schedule = getScheduleById(state.ui.mapScheduleId);
-  if(!schedule) return '';
-  return `<div class="fixed inset-0 z-50">
-    <div class="absolute inset-0 bg-black/40" onclick="closeMapModal()"></div>
-    <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[92vw] max-w-2xl bg-white rounded-xl shadow-2xl overflow-hidden">
-      <div class="px-4 py-3 border-b flex items-center justify-between">
-        <div class="font-semibold text-sm sm:text-base">${schedule.location} 지도</div>
-        <button onclick="closeMapModal()" class="text-sm text-gray-500">닫기</button>
-      </div>
-      <div id="kakao-map-canvas" style="width:100%;height:420px;"></div>
-      <div class="px-4 py-3 border-t text-right">
-        ${schedule.mapUrl ? `<a href="${schedule.mapUrl}" target="_blank" class="text-blue-600 underline text-sm">카카오맵 크게보기</a>` : ''}
-      </div>
-    </div>
-  </div>`;
-}
-function createFormation(){ 
-  const present = getPresentPlayers(); 
-  const total = Object.values(state.formation).flat().filter(Boolean).length; 
-  const savedQuarters = getSavedQuartersCount(); 
-  const selected = getSelectedSchedule(); 
-  
-  return `<div class="space-y-4 sm:space-y-6">
-    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div class="flex items-center gap-2">
-          <span class="text-sm text-gray-600 font-medium">현재 쿼터</span>
-          ${[1,2,3,4].map(n=>`<button onclick="setCurrentQuarter(${n})" class="px-3 py-2 rounded-lg text-sm font-medium transition-all relative ${state.currentQuarter===n?'bg-blue-600 text-white shadow-md':'bg-gray-100 hover:bg-gray-200'}">${n}${state.quarters[n-1] ? '<span class="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full"></span>' : ''}</button>`).join('')}
+          <div style="display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-top:14px;">
+            <span style="font-size:{{ ui.heroDate }}; font-weight:800; letter-spacing:-1px; line-height:1;">{{ next.date }}</span>
+            <span style="font-size:18px; font-weight:700; color:#141414;">{{ next.time }}</span>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:16px; padding-top:14px; border-top:1px solid #F0EFEB;">
+            <div style="min-width:0;">
+              <div style="font-size:16px; font-weight:800;">{{ next.venue }}</div>
+              <div style="font-size:13px; color:#5F5F5F; margin-top:3px;">{{ next.address }}</div>
+            </div>
+            <div onClick="{{ toggleMap }}" style="flex-shrink:0; min-height:40px; padding:0 14px; display:flex; align-items:center; gap:6px; border-radius:10px; border:1.5px solid #E2E1DC; font-size:13px; font-weight:800; cursor:pointer; color:#141414;">{{ mapLabel }}</div>
+          </div>
+          <sc-if value="{{ mapOpen }}">
+            <div id="venueMap" data-lat="{{ next.lat }}" data-lng="{{ next.lng }}" data-address="{{ next.address }}" data-name="{{ next.venue }}" style="margin-top:12px; height:{{ ui.mapH }}; border-radius:12px; overflow:hidden; background:#EEEDE8; border:1px solid #E2E1DC;"></div>
+          </sc-if>
+          <div style="display:grid; grid-template-columns:{{ next.navCols }}; gap:8px; margin-top:12px;">
+            <sc-for list="{{ next.navApps }}" as="n">
+              <a href="{{ n.href }}" target="{{ n.target }}" rel="noopener" onClick="{{ n.onClick }}" style="min-height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:#F6F6F4; color:#141414; font-size:13px; font-weight:800;">{{ n.label }}</a>
+            </sc-for>
+          </div>
         </div>
-        <div class="text-sm text-gray-600">
-          <span class="font-medium">저장된 쿼터: <span class="text-blue-600">${savedQuarters}/4</span></span>
+
+        <div style="padding:{{ ui.cardPad }}; border-top:1px solid #F0EFEB; background:#FFFFFF;">
+          <sc-if value="{{ noIdentity }}">
+            <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+              <div style="flex:1; min-width:200px;">
+                <div style="font-size:15px; font-weight:800;">내 참석 여부</div>
+                <div style="font-size:13px; color:#5F5F5F; margin-top:3px;">처음 한 번만 명단에서 내 이름을 골라주세요. 이 기기에 저장돼요.</div>
+              </div>
+              <div onClick="{{ openPicker }}" style="min-height:48px; padding:0 22px; display:flex; align-items:center; justify-content:center; border-radius:12px; cursor:pointer; font-size:15px; font-weight:800; background:#141414; color:#FFFFFF;">내 이름 선택하기</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ rsvpCollapsed }}">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span style="font-size:13px; font-weight:800; padding:5px 11px; border-radius:8px; background:{{ myChip.bg }}; color:{{ myChip.fg }};">{{ myChip.label }}</span>
+              <span style="flex:1; min-width:0; font-size:14px; font-weight:700;">{{ myName }}님 응답 완료</span>
+              <span onClick="{{ openRsvp }}" style="font-size:13px; font-weight:800; color:#C71F10; cursor:pointer; padding:8px 0 8px 8px;">변경</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ rsvpExpanded }}">
+            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+              <span style="font-size:15px; font-weight:800;">{{ myName }}님 참석 여부 <span onClick="{{ openPicker }}" style="font-size:13px; font-weight:700; color:#5F5F5F; margin-left:6px; cursor:pointer; text-decoration:underline;">본인 변경</span></span>
+              <span style="font-size:13px; color:#5F5F5F;">경기 당일까지 변경 가능</span>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px;">
+              <sc-for list="{{ rsvpButtons }}" as="b">
+                <div onClick="{{ b.onClick }}" style="min-height:50px; display:flex; align-items:center; justify-content:center; border-radius:12px; cursor:pointer; font-size:15px; font-weight:800; background:{{ b.bg }}; color:{{ b.color }}; border:1.5px solid {{ b.bd }};">{{ b.label }}</div>
+              </sc-for>
+            </div>
+          </sc-if>
         </div>
       </div>
-      <div class="mt-3 flex items-center justify-between text-sm">
-        <span class="text-gray-600">📊 출석: <span class="font-semibold text-blue-600">${present.length}명</span> | 배치: <span class="font-semibold ${total===11?'text-green-600':total>11?'text-red-600':'text-orange-600'}">${total}/11명</span></span>
-        ${state.saveStatus?`<span class="text-green-600 font-medium">${state.saveStatus}</span>`:''}
+
+      <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:{{ ui.cardPad }};">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <span style="font-size:16px; font-weight:800;">참석 현황</span>
+          <span style="font-size:13px; font-weight:800; padding:5px 10px; border-radius:8px; background:{{ quorum.bg }}; color:{{ quorum.fg }};">{{ quorum.label }}</span>
+        </div>
+        <div style="display:flex; align-items:baseline; gap:6px; margin-top:12px;">
+          <span style="font-size:48px; font-weight:800; color:#C71F10; line-height:1; letter-spacing:-1px;">{{ cnt.attend }}</span>
+          <span style="font-size:15px; font-weight:800;">명 참석</span>
+          <span style="font-size:13px; color:#5F5F5F;">/ 전체 {{ cnt.total }}명</span>
+        </div>
+        <div style="position:relative; margin-top:14px;">
+          <div style="display:flex; height:12px; border-radius:6px; overflow:hidden; background:#EFEFEB;">
+            <div style="width:{{ bar.attend }}; background:#C71F10;"></div>
+            <div style="width:{{ bar.maybe }}; background:#D8C07A;"></div>
+            <div style="width:{{ bar.absent }}; background:#A8A8A2;"></div>
+          </div>
+          <div style="position:absolute; top:-4px; bottom:-4px; left:{{ bar.minPos }}; width:2px; background:#141414; border-radius:1px;"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-top:10px; font-size:13px; color:#5F5F5F;">
+          <div style="display:flex; gap:12px; flex-wrap:wrap;">
+            <span style="display:flex; align-items:center; gap:5px;"><span style="width:10px; height:10px; border-radius:3px; background:#C71F10;"></span>참석 {{ cnt.attend }}</span>
+            <span style="display:flex; align-items:center; gap:5px;"><span style="width:10px; height:10px; border-radius:3px; background:#D8C07A;"></span>미정 {{ cnt.maybe }}</span>
+            <span style="display:flex; align-items:center; gap:5px;"><span style="width:10px; height:10px; border-radius:3px; background:#A8A8A2;"></span>불참 {{ cnt.absent }}</span>
+            <span style="display:flex; align-items:center; gap:5px;"><span style="width:10px; height:10px; border-radius:3px; background:#EFEFEB; border:1px solid #DDDCD6;"></span>미응답 {{ cnt.none }}</span>
+          </div>
+          <span style="font-weight:700; color:#141414;">| 최소 {{ minPlayers }}명</span>
+        </div>
+        <div onClick="{{ toggleRoster }}" style="margin-top:14px; min-height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:#F6F6F4; font-size:13px; font-weight:800; cursor:pointer;">{{ rosterLabel }}</div>
+        <sc-if value="{{ rosterOpen }}">
+          <div style="display:flex; flex-direction:column; gap:14px; margin-top:14px;">
+            <sc-for list="{{ groups }}" as="g">
+              <div style="display:grid; grid-template-columns:{{ ui.groupCols }}; gap:{{ ui.groupGap }}; align-items:start;">
+                <span style="font-size:13px; font-weight:800; color:{{ g.color }}; padding-top:5px;">{{ g.label }} {{ g.n }}</span>
+                <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                  <sc-for list="{{ g.names }}" as="p">
+                    <span style="font-size:14px; padding:5px 11px; border-radius:9px; background:{{ p.bg }}; color:{{ p.fg }}; font-weight:{{ p.weight }}; border:1px solid {{ p.bd }};">{{ p.name }}</span>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
       </div>
-      <div class="text-xs text-gray-500 mt-1">${selected ? `기준 일정: ${selected.month}/${selected.day} ${selected.time} ${selected.location}` : '참석 탭에서 일정을 선택해주세요'}</div>
     </div>
 
-    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.users}<span class="ml-2">출석 인원</span></h3>
-      <div class="flex flex-wrap gap-2">
-        ${present.map(p=>{ 
-          const placed = Object.values(state.formation).flat().some(x=>x && x.id===p.id); 
-          const played = quartersPlayedCount(p.id); 
-          return `<div class="player-chip no-select ${placed?'bg-gray-200 text-gray-600':'bg-blue-100 text-blue-800 hover:bg-blue-200'} px-3 py-2 rounded-full text-sm font-medium ${placed?'cursor-not-allowed':'cursor-move'} transition-all" ${!placed?'draggable="true" ondragstart="handleDragStart(event, '+p.id+')" ondragend="handleDragEnd(event)"':''} style="touch-action:none;"><span class="mr-1">${p.name}</span><span class="text-xs opacity-75">(${p.position})</span><span class="ml-1 text-xs px-1 py-0.5 rounded ${played >= 2 ? 'bg-green-200 text-green-800' : played >= 1 ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-200 text-gray-600'}">${played}/4</span>${placed?'<span class="ml-1 text-xs">✓</span>':''}</div>`; 
-        }).join('')}
+    <div style="grid-area:f; background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:{{ ui.cardPad }}; min-width:0;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <span style="font-size:16px; font-weight:800;">이번 경기 포메이션</span>
+        <span onClick="{{ goFormation }}" style="font-size:13px; font-weight:800; color:#C71F10; cursor:pointer;">전체 보기</span>
       </div>
-      ${present.length===0?'<p class="text-gray-500 text-sm mt-2 text-center py-4 bg-gray-50 rounded-lg">💡 참석 탭에서 참석자를 선택하면 여기서 바로 배치됩니다.</p>':''}
-    </div>
-
-    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <h3 class="text-base sm:text-lg font-semibold mb-3 sm:mb-4 flex items-center">${icons.target}<span class="ml-2">포메이션 - ${state.currentQuarter}쿼터</span></h3>
-      <div class="pitch">
-        <div class="half-line"></div>
-        <div class="center-circle"></div>
-        <div class="center-dot"></div>
-        <div class="box top"></div>
-        <div class="box bottom"></div>
-        <div class="relative h-full flex flex-col justify-between py-8 sm:py-16">
-          ${rowOrder.map(pos => createPositionRow(pos)).join('')}
+      <div style="margin-top:12px; padding:12px 14px; border-radius:12px; background:{{ mySummary.bg }}; display:flex; gap:10px; align-items:baseline;">
+        <span style="font-size:13px; font-weight:800; color:{{ mySummary.labelFg }}; flex-shrink:0;">내 포지션</span>
+        <span style="font-size:14px; font-weight:700; color:{{ mySummary.fg }};">{{ mySummary.text }}</span>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:6px; margin-top:12px;">
+        <sc-for list="{{ qButtons }}" as="q">
+          <div onClick="{{ q.onClick }}" style="position:relative; min-height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:{{ q.bg }}; color:{{ q.fg }}; border:1.5px solid {{ q.bd }};">{{ q.label }}<span style="position:absolute; top:6px; right:7px; width:6px; height:6px; border-radius:50%; background:{{ q.dot }};"></span></div>
+        </sc-for>
+      </div>
+      <div style="margin:12px auto 0; max-width:{{ ui.pitchMaxHome }};">
+        <div style="position:relative; width:100%; aspect-ratio:68 / 100; border-radius:12px; overflow:hidden; background:repeating-linear-gradient(180deg, #2F6B45 0 10%, #2B6440 10% 20%);">
+          <div style="position:absolute; inset:3.5%; border:2px solid rgba(255,255,255,.5); border-radius:2px;"></div>
+          <div style="position:absolute; left:3.5%; right:3.5%; top:50%; height:2px; margin-top:-1px; background:rgba(255,255,255,.5);"></div>
+          <div style="position:absolute; left:50%; top:50%; width:26%; aspect-ratio:1; transform:translate(-50%,-50%); border:2px solid rgba(255,255,255,.5); border-radius:50%;"></div>
+          <div style="position:absolute; left:28%; right:28%; top:3.5%; height:14%; border:2px solid rgba(255,255,255,.5); border-top:none;"></div>
+          <div style="position:absolute; left:28%; right:28%; bottom:3.5%; height:14%; border:2px solid rgba(255,255,255,.5); border-bottom:none;"></div>
+          <sc-for list="{{ pitchSlots }}" as="s">
+            <div style="position:absolute; left:{{ s.x }}; top:{{ s.y }}; transform:translate(-50%,-50%); display:flex; align-items:center; gap:4px; padding:4px 8px 4px 6px; border-radius:999px; white-space:nowrap; background:{{ s.bg }}; color:{{ s.fg }}; border:1.5px {{ s.bdStyle }} {{ s.bd }}; box-shadow:{{ s.shadow }};">
+              <span style="font-size:12px; font-weight:800; color:{{ s.posFg }};">{{ s.pos }}</span>
+              <span style="font-size:12px; font-weight:800;">{{ s.name }}</span>
+            </div>
+          </sc-for>
         </div>
       </div>
-      <div class="mt-4 text-center">
-        <span class="text-sm font-medium ${total===11?'text-green-600': total>11?'text-red-600':'text-gray-700'}">🏟️ 필드 선수: ${total}/11명 ${total>11?' ⚠️ 인원 초과!':''} ${total===11?' ✅ 완료':''}</span>
-      </div>
-      <div class="mt-4 flex flex-col sm:flex-row justify-center items-center gap-3">
-        <button onclick="saveCurrentFormation()" class="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm flex items-center hover:bg-blue-700 transition-all hover:scale-105 ${total !== 11 ? 'opacity-50 cursor-not-allowed' : ''}">
-          ${icons.save}
-          <span class="ml-2">${state.currentQuarter}쿼터 ${state.quarters[state.currentQuarter-1] ? '수정(덮어쓰기)' : '저장'}</span>
-        </button>
-        <button onclick="clearFormation()" class="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 text-sm transition-all hover:scale-105">
-          ${icons.trash}
-          <span class="ml-2">포메이션 초기화</span>
-        </button>
-      </div>
+      <sc-if value="{{ formationEmpty }}">
+        <div style="margin-top:12px; text-align:center; font-size:13px; color:#5F5F5F;">아직 포메이션이 없어요. 운영진이 경기 전날까지 올려요.</div>
+      </sc-if>
     </div>
-    ${total !== 11 ? `<div class="text-center mt-2 text-xs text-orange-600">💡 11명을 정확히 배치해야 저장할 수 있습니다. (현재: ${total}명)</div>` : ''}
-    
-    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <h3 class="text-base sm:text-lg font-semibold mb-4 flex items-center justify-between">
-        <span class="flex items-center">${icons.calendar}<span class="ml-2">쿼터 미리보기</span></span>
-        <span class="text-sm font-normal text-gray-600">저장됨: ${savedQuarters}/4</span>
-      </h3>
-      <div class="space-y-4">
-        ${[1,2,3,4].map(n => createQuarterPreview(n)).join('')}
-      </div>
-    </div>
-  </div>`; 
-}
-function createPositionRow(position){ const slots = state.formation[position]; const labels = positionLabels[position] || []; const color = position==='gk'?'bg-purple-500':position==='def'?'bg-green-500':position==='dmf'?'bg-teal-500':position==='cmf'?'bg-blue-500':position==='amf'?'bg-orange-500':'bg-red-500'; return `<div class="row-grid cols-${slots.length} px-4">${slots.map((player,idx)=>`<div class="cell drop-slot" data-position="${position}" data-slot-index="${idx}" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, '${position}', ${idx})" onclick="openPicker('${position}', ${idx})">${player?`<div class="relative"><div class="w-14 h-14 sm:w-16 sm:h-16 ${color} rounded-full flex items-center justify-center text-white text-xs sm:text-sm font-bold shadow-lg player-chip-field no-select" title="클릭하여 제거 또는 교체" onclick="removePlayerFromSlot('${position}', ${idx}, event)" ontouchstart="openPicker('${position}', ${idx}')"><span class="text-center leading-tight px-1">${player.name}</span></div></div>` : `<div class="w-14 h-14 sm:w-16 sm:h-16 empty-slot rounded-full flex items-center justify-center text-white/60 text-xs cursor-pointer"><span class="text-center">+</span></div>`}<div class="text-white/90 text-xs font-medium mt-1">${labels[idx]||''}</div></div>`).join('')}</div>`; }
-function createQuarterPreview(n){ const q = state.quarters[n-1]; const title = `${n}쿼터`; const playerCount = q ? Object.values(q).flat().filter(Boolean).length : 0; return `<div class="border-2 rounded-lg p-4 ${q ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}"><div class="flex items-center justify-between mb-3"><div class="flex items-center gap-2"><span class="font-semibold text-sm">${title}</span><span class="text-xs px-2 py-1 rounded-full ${q ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}">${q ? `${playerCount}/11명` : '비어있음'}</span></div><div class="flex items-center gap-2"><button class="text-xs px-3 py-1 rounded-lg transition-all ${q?'bg-blue-600 text-white hover:bg-blue-700':'bg-gray-100 text-gray-500 cursor-not-allowed'}" ${q?`onclick="loadQuarter(${n})"`:'disabled'}>${q?'불러오기':'비어있음'}</button><button class="text-xs px-2 py-1 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center transition-all" onclick="clearQuarter(${n})">${icons.trash}</button></div></div><div class="mini-pitch relative"><div class="half-line"></div><div class="box top"></div><div class="box bottom"></div>${miniRows(q)}</div></div>`; }
-function miniRows(q){ if (!q) return ''; const positions = ['fw', 'amf', 'cmf', 'dmf', 'def', 'gk']; const yPerc = [8, 24, 40, 56, 72, 88]; return positions.map((pos,i)=>{ const arr = q[pos] || []; const playersInPosition = arr.filter(p => p !== null); if (playersInPosition.length === 0) return ''; const cols = playersInPosition.length; const left = 8, right = 8; const rowStyle = `top:${yPerc[i]}%; left:${left}px; right:${right}px; grid-template-columns: repeat(${cols},1fr); gap: 4px;`; const gkColor = pos === 'gk' ? 'bg-purple-600' : 'bg-blue-600'; return `<div class="mini-row" style="${rowStyle}">${playersInPosition.map(p=> `<div class="mini-badge ${gkColor}" style="font-size: ${cols > 3 ? '9px' : '10px'};">${p.name}</div>`).join('')}</div>`; }).join(''); }
-function createBottomSheet(){ if(!state.ui.pickerOpen) return ''; const pos = state.ui.pickerPos, idx = state.ui.pickerSlot; const inSlot = state.formation[pos][idx]; const assignedIds = new Set(Object.values(state.formation).flat().filter(Boolean).map(p=>p.id)); const q = state.ui.pickerSearch.trim().toLowerCase(); const presentIds = new Set(getPresentPlayers().map(p=>p.id)); const candidates = state.players.filter(p=>presentIds.has(p.id)).filter(p=> !assignedIds.has(p.id) || (inSlot && p.id===inSlot.id)).filter(p=> matchesSearch(p.name, q)); return `<div class="fixed inset-0 z-50"><div class="absolute inset-0 bg-black/30" onclick="closePicker()"></div><div class="absolute left-0 right-0 bottom-0 bg-white rounded-t-2xl shadow-2xl p-4 pt-3"><div class="flex items-center justify-between mb-3"><div class="text-sm text-gray-600 font-medium">슬롯: <span class="text-blue-600 font-bold">${pos.toUpperCase()} ${idx+1}</span></div><button class="text-gray-500 text-sm hover:text-gray-700" onclick="closePicker()">✕ 닫기</button></div><div class="flex items-center gap-2 mb-4"><input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="이름 검색..." value="${state.ui.pickerSearch}" oninput="setState({ ui:{...state.ui, pickerSearch:this.value} })">${inSlot?`<button class="px-3 py-2 text-xs rounded-lg bg-red-100 hover:bg-red-200 text-red-700" onclick="unassignSlot('${pos}', ${idx}, event)">제거</button>`:''}</div><div class="max-h-[50vh] overflow-y-auto flex flex-col gap-2 w-full">${candidates.map(p=>`<button class="p-3 rounded-lg border text-left hover:bg-blue-50 hover:border-blue-200 transition-all" onclick="assignToSlot(${p.id})"><div class="flex items-center justify-between"><div class="flex items-center gap-2"><span class="text-sm font-medium">${p.name}</span><span class="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">${p.position}</span></div><span class="text-xs text-gray-500">쿼터: ${quartersPlayedCount(p.id)}/4</span></div></button>`).join('')}${candidates.length===0?`<div class="text-center text-sm text-gray-500 py-8 bg-gray-50 rounded-lg">😔 선택할 수 있는 선수가 없습니다</div>`:''}</div></div></div>`; }
-function createMembers(){
-  const q = state.playerSearch.trim();
-  const list = q ? state.players.filter(p=>matchesSearch(p.name, q)) : state.players;
-  return `<div class="space-y-4 sm:space-y-6">
-    <div class="bg-blue-50 border border-blue-200 p-4 rounded-lg">
-      <h3 class="text-base sm:text-lg font-semibold mb-2 flex items-center">${icons.users}<span class="ml-2">구성원/포지션 관리</span></h3>
-      <p class="text-xs text-gray-600 mt-2">출석 관리는 참석 탭에서 경기 일정별로 진행합니다. 이 탭은 이름과 기본 포지션만 관리합니다.</p>
-    </div>
-    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-md">
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-2">
-        <h3 class="text-base sm:text-lg font-semibold flex items-center">${icons.users}<span class="ml-2">선수 포지션</span></h3>
-        <div class="text-sm text-gray-600">총 인원: <span class="font-semibold text-blue-600">${state.players.length}명</span></div>
-      </div>
-      <div class="sm:ml-auto w-full sm:w-64 mb-4"><input class="border rounded-lg px-3 py-2 w-full text-sm" placeholder="선수 이름 검색..." value="${state.playerSearch}" oninput="setState({playerSearch:this.value})"></div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">${list.map(p=>`<div class="p-3 rounded-lg border-2 bg-gray-50 border-gray-200"><div class="flex items-center justify-between gap-2"><div class="text-left flex-1"><span class="font-medium text-sm">${p.name}</span></div><select class="border rounded px-2 py-1 text-xs" onchange="updatePlayerPosition(${p.id}, this.value)">${['GK','DF','MF','FW'].map(pos=>`<option value="${pos}" ${p.position===pos?'selected':''}>${pos}</option>`).join('')}</select></div></div>`).join('')}</div>
-    </div>
-  </div>`;
-}
 
-let toastTimer=null;
-function toast(msg){ setState({saveStatus:msg}); if(toastTimer) clearTimeout(toastTimer); toastTimer=setTimeout(()=>setState({saveStatus:""}), 2000); }
+    <div style="grid-area:u; background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:{{ ui.cardPad }}; min-width:0;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:16px; font-weight:800;">이후 일정</span>
+        <span onClick="{{ goSchedule }}" style="font-size:13px; font-weight:800; color:#C71F10; cursor:pointer;">전체 일정</span>
+      </div>
+      <div style="display:flex; flex-direction:column; margin-top:6px;">
+        <sc-for list="{{ upcoming }}" as="u">
+          <div style="display:grid; grid-template-columns:64px minmax(0,1fr); gap:12px; align-items:center; padding:12px 0; border-top:{{ u.bt }};">
+            <div>
+              <div style="font-size:18px; font-weight:800; letter-spacing:-.5px;">{{ u.date }}</div>
+              <div style="font-size:12px; color:#5F5F5F; font-weight:700;">{{ u.dow }}</div>
+            </div>
+            <div style="min-width:0;">
+              <div style="font-size:14px; font-weight:800;">{{ u.venue }}</div>
+              <div style="font-size:13px; color:#5F5F5F; margin-top:2px;">{{ u.meta }}</div>
+            </div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ upcomingEmpty }}">
+          <div style="font-size:13px; color:#5F5F5F; padding:14px 0 4px;">등록된 이후 일정이 없어요.</div>
+        </sc-if>
+      </div>
+    </div>
 
-document.addEventListener('DOMContentLoaded', async ()=>{
-  console.log("DEBUG: DOM 로드 완료. 초기 렌더링 시작.");
-  loadLocalData();
-  initSchedulesFromInput();
-  await loadLocalMembersJson(); // 로컬 JSON 멤버 목록 로드(주차 설정 자동 반영)
-  await initFirebaseSync();
-  render();
-});
-</script>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ fmReady }}">
+  <div data-screen-label="포메이션" style="max-width:1120px; margin:0 auto; padding:{{ ui.mainPad }}; display:flex; flex-direction:column; gap:{{ ui.gap }};">
+
+    <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div>
+        <div style="font-size:{{ ui.pageTitle }}; font-weight:800; letter-spacing:-.5px;">포메이션</div>
+        <div style="font-size:13px; color:#5F5F5F; margin-top:4px;">{{ next.date }} {{ next.time }} · {{ next.venue }} · 참석 {{ cnt.attend }}명 · 4-2-3-1</div>
+      </div>
+      <sc-if value="{{ isAdmin }}"><span style="font-size:13px; font-weight:800; color:#6E5513; background:#F6F0DC; padding:6px 12px; border-radius:8px;">운영진 · 편집 가능</span></sc-if>
+    </div>
+
+    <div style="display:grid; grid-template-columns:{{ ui.fmCols }}; gap:{{ ui.gap }}; align-items:start;">
+
+      <div style="display:flex; flex-direction:column; gap:{{ ui.gap }}; min-width:0;">
+        <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:{{ ui.cardPad }};">
+          <div style="font-size:13px; font-weight:800; color:#5F5F5F;">{{ myLabel }}</div>
+          <div style="font-size:17px; font-weight:800; margin-top:6px; color:{{ mySummary.fg2 }};">{{ mySummary.text }}</div>
+          <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:6px; margin-top:12px;">
+            <sc-for list="{{ myQuarters }}" as="m">
+              <div style="border-radius:10px; padding:9px 4px; text-align:center; background:{{ m.bg }}; color:{{ m.fg }};">
+                <div style="font-size:12px; font-weight:700; color:{{ m.sub }};">{{ m.q }}</div>
+                <div style="font-size:15px; font-weight:800; margin-top:2px;">{{ m.pos }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:{{ ui.cardPad }};">
+          <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:6px;">
+            <sc-for list="{{ qButtons }}" as="q">
+              <div onClick="{{ q.onClick }}" style="position:relative; min-height:46px; display:flex; align-items:center; justify-content:center; border-radius:10px; cursor:pointer; font-size:15px; font-weight:800; background:{{ q.bg }}; color:{{ q.fg }}; border:1.5px solid {{ q.bd }};">{{ q.label }}<span style="position:absolute; top:6px; right:7px; width:6px; height:6px; border-radius:50%; background:{{ q.dot }};"></span></div>
+            </sc-for>
+          </div>
+          <sc-if value="{{ isAdmin }}">
+            <div style="margin-top:12px; padding:10px 12px; border-radius:12px; background:#F6F0DC; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span style="flex:1; min-width:180px; font-size:13px; font-weight:700; color:#3D2F08;">{{ editHint }}</span>
+              <sc-if value="{{ canCopyPrev }}">
+                <span onClick="{{ copyPrev }}" style="min-height:36px; padding:0 12px; display:flex; align-items:center; border-radius:9px; background:#FFFFFF; border:1.5px solid #D8C07A; font-size:13px; font-weight:800; cursor:pointer; color:#3D2F08;">이전 쿼터 복사</span>
+              </sc-if>
+              <span onClick="{{ saveEdit }}" style="min-height:36px; padding:0 14px; display:flex; align-items:center; border-radius:9px; background:{{ saveBtn.bg }}; color:{{ saveBtn.fg }}; font-size:13px; font-weight:800; cursor:pointer;">{{ saveBtn.label }}</span>
+            </div>
+          </sc-if>
+          <div style="margin:14px auto 0; max-width:{{ ui.pitchMaxTab }};">
+            <div style="position:relative; width:100%; aspect-ratio:68 / 100; border-radius:12px; overflow:hidden; background:repeating-linear-gradient(180deg, #2F6B45 0 10%, #2B6440 10% 20%);">
+              <div style="position:absolute; inset:3.5%; border:2px solid rgba(255,255,255,.5); border-radius:2px;"></div>
+              <div style="position:absolute; left:3.5%; right:3.5%; top:50%; height:2px; margin-top:-1px; background:rgba(255,255,255,.5);"></div>
+              <div style="position:absolute; left:50%; top:50%; width:26%; aspect-ratio:1; transform:translate(-50%,-50%); border:2px solid rgba(255,255,255,.5); border-radius:50%;"></div>
+              <div style="position:absolute; left:28%; right:28%; top:3.5%; height:14%; border:2px solid rgba(255,255,255,.5); border-top:none;"></div>
+              <div style="position:absolute; left:28%; right:28%; bottom:3.5%; height:14%; border:2px solid rgba(255,255,255,.5); border-bottom:none;"></div>
+              <sc-for list="{{ pitchSlots }}" as="s">
+                <div onClick="{{ s.onClick }}" style="cursor:{{ s.cursor }}; position:absolute; left:{{ s.x }}; top:{{ s.y }}; transform:translate(-50%,-50%); display:flex; align-items:center; gap:4px; padding:5px 9px 5px 7px; min-height:30px; border-radius:999px; white-space:nowrap; background:{{ s.bg }}; color:{{ s.fg }}; border:1.5px {{ s.bdStyle }} {{ s.bd }}; box-shadow:{{ s.shadow }};">
+                  <span style="font-size:12px; font-weight:800; color:{{ s.posFg }};">{{ s.pos }}</span>
+                  <span style="font-size:13px; font-weight:800;">{{ s.name }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-top:14px; font-size:13px; color:#5F5F5F;">
+            <span style="font-weight:800; color:#141414;">{{ qInfo.field }}</span>
+            <span>{{ qInfo.rest }}</span>
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;">
+            <sc-for list="{{ benchList }}" as="b">
+              <span onClick="{{ b.onClick }}" style="min-height:{{ b.h }}; display:flex; align-items:center; font-size:14px; font-weight:700; padding:0 12px; border-radius:9px; cursor:{{ b.cursor }}; background:{{ b.bg }}; color:{{ b.fg }}; border:1.5px {{ b.bdStyle }} {{ b.bd }};">{{ b.name }}</span>
+            </sc-for>
+          </div>
+          <sc-if value="{{ fmError }}">
+            <div style="margin-top:12px; font-size:13px; font-weight:700; color:#A3190B;">{{ fmError }}</div>
+          </sc-if>
+          <sc-if value="{{ memberNote }}">
+            <div style="margin-top:12px; font-size:12px; color:#6B6B6B;">포메이션은 운영진만 바꿀 수 있어요.</div>
+          </sc-if>
+        </div>
+      </div>
+
+      <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:{{ ui.cardPad }}; min-width:0;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px;">
+          <span style="font-size:16px; font-weight:800;">쿼터별 출전표</span>
+          <span style="font-size:13px; color:#5F5F5F;">참석 {{ cnt.attend }}명</span>
+        </div>
+        <sc-if value="{{ formationEmpty }}">
+          <div style="margin-top:14px; padding:28px 16px; border-radius:12px; background:#F6F6F4; text-align:center;">
+            <div style="font-size:15px; font-weight:800;">아직 포메이션이 없어요</div>
+            <div style="font-size:13px; color:#5F5F5F; margin-top:6px; line-height:1.5;">{{ emptyMsg }}</div>
+            <sc-if value="{{ isAdmin }}">
+              <div onClick="{{ startEdit }}" style="margin:14px auto 0; width:fit-content; min-height:44px; padding:0 20px; display:flex; align-items:center; border-radius:12px; background:#141414; color:#FFFFFF; font-size:14px; font-weight:800; cursor:pointer;">포메이션 만들기</div>
+            </sc-if>
+          </div>
+        </sc-if>
+        <sc-if value="{{ formationReady }}">
+          <div style="margin-top:10px;">
+            <div style="display:grid; grid-template-columns:minmax(0,1fr) repeat(4, 46px) 40px; gap:4px; align-items:center; padding:8px 8px; font-size:12px; font-weight:800; color:#5F5F5F; border-bottom:1px solid #EAEAE6;">
+              <span>이름</span>
+              <sc-for list="{{ qHeads }}" as="h">
+                <span style="text-align:center; color:{{ h.fg }};">{{ h.label }}</span>
+              </sc-for>
+              <span style="text-align:right;">출전</span>
+            </div>
+            <sc-for list="{{ lineupRows }}" as="r">
+              <div style="display:grid; grid-template-columns:minmax(0,1fr) repeat(4, 46px) 40px; gap:4px; align-items:center; padding:0 8px; min-height:40px; border-bottom:1px solid #F2F1ED; background:{{ r.bg }}; border-radius:{{ r.radius }};">
+                <span style="font-size:14px; font-weight:{{ r.weight }}; color:{{ r.fg }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.name }}</span>
+                <sc-for list="{{ r.cells }}" as="c">
+                  <span style="text-align:center; font-size:{{ c.size }}; font-weight:{{ c.weight }}; color:{{ c.fg }}; background:{{ c.bg }}; border-radius:6px; padding:4px 0;">{{ c.text }}</span>
+                </sc-for>
+                <span style="text-align:right; font-size:13px; font-weight:700; color:#5F5F5F;">{{ r.count }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ schedReady }}">
+  <div data-screen-label="일정" style="max-width:1120px; margin:0 auto; padding:{{ ui.mainPad }}; display:flex; flex-direction:column; gap:{{ ui.gap }};">
+    <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div>
+        <div style="font-size:{{ ui.pageTitle }}; font-weight:800; letter-spacing:-.5px;">일정</div>
+        <div style="font-size:13px; color:#5F5F5F; margin-top:4px;">{{ schedSub }}</div>
+      </div>
+      <div style="display:flex; gap:6px;">
+        <sc-for list="{{ schedViews }}" as="v">
+          <div onClick="{{ v.onClick }}" style="min-height:40px; padding:0 16px; display:flex; align-items:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:{{ v.bg }}; color:{{ v.fg }}; border:1.5px solid {{ v.bd }};">{{ v.label }}</div>
+        </sc-for>
+        <sc-if value="{{ isAdmin }}">
+          <div onClick="{{ addSched }}" style="min-height:40px; padding:0 16px; display:flex; align-items:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:#C71F10; color:#FFFFFF; border:1.5px solid #C71F10;">일정 추가</div>
+        </sc-if>
+      </div>
+    </div>
+
+    <sc-if value="{{ schedFormOpen }}">
+      <div style="background:#FFFFFF; border:1.5px solid #D8C07A; border-radius:16px; padding:{{ ui.cardPad }};">
+        <div style="font-size:16px; font-weight:800;">{{ schedForm.title }}</div>
+        <div style="display:grid; grid-template-columns:{{ ui.formCols }}; gap:10px; margin-top:12px;">
+          <label style="font-size:13px; font-weight:700; color:#5F5F5F;">날짜<input id="sf-date" type="date" value="{{ schedForm.date }}" style="display:block; width:100%; margin-top:5px; padding:11px 12px; border-radius:10px; border:1.5px solid #E2E1DC; background:#FFFFFF; font-family:inherit; font-size:15px; color:#141414; outline:none;"></label>
+          <label style="font-size:13px; font-weight:700; color:#5F5F5F;">시간<input id="sf-time" value="{{ schedForm.time }}" placeholder="예: 7-10시" style="display:block; width:100%; margin-top:5px; padding:11px 12px; border-radius:10px; border:1.5px solid #E2E1DC; background:#FFFFFF; font-family:inherit; font-size:15px; color:#141414; outline:none;"></label>
+          <label style="font-size:13px; font-weight:700; color:#5F5F5F;">구장 이름<input id="sf-venue" value="{{ schedForm.venue }}" placeholder="예: 대화레포츠축구장" style="display:block; width:100%; margin-top:5px; padding:11px 12px; border-radius:10px; border:1.5px solid #E2E1DC; background:#FFFFFF; font-family:inherit; font-size:15px; color:#141414; outline:none;"></label>
+          <label style="font-size:13px; font-weight:700; color:#5F5F5F;">상대팀 (자체 경기면 비워 두기)<input id="sf-opp" value="{{ schedForm.opponent }}" style="display:block; width:100%; margin-top:5px; padding:11px 12px; border-radius:10px; border:1.5px solid #E2E1DC; background:#FFFFFF; font-family:inherit; font-size:15px; color:#141414; outline:none;"></label>
+          <label style="grid-column:1 / -1; font-size:13px; font-weight:700; color:#5F5F5F;">주소 (지도와 내비 연결에 사용)<input id="sf-address" value="{{ schedForm.address }}" placeholder="예: 경기 고양시 일산서구 대화로 166" style="display:block; width:100%; margin-top:5px; padding:11px 12px; border-radius:10px; border:1.5px solid #E2E1DC; background:#FFFFFF; font-family:inherit; font-size:15px; color:#141414; outline:none;"></label>
+        </div>
+        <sc-if value="{{ schedForm.error }}">
+          <div style="font-size:13px; font-weight:700; color:#A3190B; margin-top:10px;">{{ schedForm.error }}</div>
+        </sc-if>
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:14px;">
+          <div onClick="{{ cancelSched }}" style="min-height:42px; padding:0 18px; display:flex; align-items:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:#FFFFFF; color:#141414; border:1.5px solid #E2E1DC;">취소</div>
+          <div onClick="{{ saveSched }}" style="min-height:42px; padding:0 18px; display:flex; align-items:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:#141414; color:#FFFFFF; border:1.5px solid #141414;">{{ schedForm.saveLabel }}</div>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ schedEmpty }}">
+      <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:28px 18px; text-align:center; font-size:13px; color:#5F5F5F;">{{ schedEmptyText }}</div>
+    </sc-if>
+
+    <div style="display:grid; grid-template-columns:{{ ui.schedCols }}; gap:{{ ui.gap }}; align-items:start;">
+      <sc-for list="{{ schedGroups }}" as="g">
+        <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:{{ ui.listPad }}; min-width:0;">
+          <div style="display:flex; justify-content:space-between; align-items:baseline; padding:4px 4px 8px;">
+            <span style="font-size:16px; font-weight:800;">{{ g.month }}</span>
+            <span style="font-size:13px; color:#5F5F5F;">{{ g.n }}경기</span>
+          </div>
+          <sc-for list="{{ g.items }}" as="s">
+            <div style="border-top:1px solid #F0EFEB;">
+              <div onClick="{{ s.onClick }}" style="display:grid; grid-template-columns:56px minmax(0,1fr) auto; gap:12px; align-items:center; padding:12px 4px; cursor:pointer;">
+                <div>
+                  <div style="font-size:20px; font-weight:800; letter-spacing:-.5px; color:{{ s.dateFg }};">{{ s.date }}</div>
+                  <div style="font-size:12px; font-weight:700; color:#5F5F5F;">{{ s.dow }}</div>
+                </div>
+                <div style="min-width:0;">
+                  <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                    <sc-if value="{{ s.isNext }}">
+                      <span style="background:#C71F10; color:#FFFFFF; font-size:12px; font-weight:800; padding:2px 7px; border-radius:6px;">{{ s.dday }}</span>
+                    </sc-if>
+                    <span style="font-size:15px; font-weight:800;">{{ s.venue }}</span>
+                  </div>
+                  <div style="font-size:13px; color:#5F5F5F; margin-top:3px;">{{ s.meta }}</div>
+                </div>
+                <span style="font-size:13px; font-weight:800; padding:5px 10px; border-radius:8px; background:{{ s.chipBg }}; color:{{ s.chipFg }}; border:1px solid {{ s.chipBd }}; white-space:nowrap;">{{ s.chip }}</span>
+              </div>
+              <sc-if value="{{ s.open }}">
+                <div style="padding:0 4px 16px; display:flex; flex-direction:column; gap:10px;">
+                  <div style="font-size:13px; color:#5F5F5F;">{{ s.address }}</div>
+                  <div style="display:flex; height:8px; border-radius:4px; overflow:hidden; background:#EFEFEB;">
+                    <div style="width:{{ s.barA }}; background:#C71F10;"></div>
+                    <div style="width:{{ s.barM }}; background:#D8C07A;"></div>
+                    <div style="width:{{ s.barX }}; background:#A8A8A2;"></div>
+                  </div>
+                  <div style="font-size:13px; color:#5F5F5F;">참석 {{ s.a }} · 미정 {{ s.m }} · 불참 {{ s.x }} · 미응답 {{ s.none }}</div>
+                  <sc-if value="{{ s.canAnswer }}">
+                    <div style="display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px;">
+                      <sc-for list="{{ s.buttons }}" as="b">
+                        <div onClick="{{ b.onClick }}" style="min-height:46px; display:flex; align-items:center; justify-content:center; border-radius:12px; cursor:pointer; font-size:14px; font-weight:800; background:{{ b.bg }}; color:{{ b.color }}; border:1.5px solid {{ b.bd }};">{{ b.label }}</div>
+                      </sc-for>
+                    </div>
+                    <div style="display:grid; grid-template-columns:{{ s.navCols }}; gap:8px;">
+                      <sc-for list="{{ s.navApps }}" as="n">
+                        <a href="{{ n.href }}" target="{{ n.target }}" rel="noopener" onClick="{{ n.onClick }}" style="min-height:40px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:#F6F6F4; color:#141414; font-size:13px; font-weight:800;">{{ n.label }}</a>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ s.canEdit }}">
+                    <div style="display:flex; gap:16px; justify-content:flex-end; font-size:13px; font-weight:800;">
+                      <span onClick="{{ s.onEdit }}" style="color:#6E5513; cursor:pointer; padding:6px 0;">일정 수정</span>
+                      <span onClick="{{ s.onDelete }}" style="color:#A3190B; cursor:pointer; padding:6px 0;">삭제</span>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ membersReady }}">
+  <div data-screen-label="구성원" style="max-width:1120px; margin:0 auto; padding:{{ ui.mainPad }}; display:flex; flex-direction:column; gap:{{ ui.gap }};">
+    <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div>
+        <div style="font-size:{{ ui.pageTitle }}; font-weight:800; letter-spacing:-.5px;">구성원 <span style="color:#C71F10;">{{ memberTotal }}</span></div>
+        <div style="font-size:13px; color:#5F5F5F; margin-top:4px;">{{ memberSub }}</div>
+      </div>
+      <input value="{{ memberQuery }}" onInput="{{ onMemberQuery }}" placeholder="이름 검색" style="width:{{ ui.searchW }}; padding:11px 14px; border-radius:12px; border:1.5px solid #E2E1DC; background:#FFFFFF; font-family:'Pretendard'; font-size:15px; outline:none;">
+    </div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+      <sc-for list="{{ posFilters }}" as="f">
+        <div onClick="{{ f.onClick }}" style="min-height:40px; padding:0 14px; display:flex; align-items:center; gap:6px; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:{{ f.bg }}; color:{{ f.fg }}; border:1.5px solid {{ f.bd }};">{{ f.label }}<span style="font-size:12px; font-weight:700; color:{{ f.sub }};">{{ f.n }}</span></div>
+      </sc-for>
+      <sc-if value="{{ isAdmin }}">
+        <div onClick="{{ addMember }}" style="min-height:40px; padding:0 14px; display:flex; align-items:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:#C71F10; color:#FFFFFF; border:1.5px solid #C71F10;">구성원 추가</div>
+      </sc-if>
+    </div>
+    <sc-if value="{{ memberFormOpen }}">
+      <div style="background:#FFFFFF; border:1.5px solid #D8C07A; border-radius:16px; padding:{{ ui.cardPad }};">
+        <div style="font-size:16px; font-weight:800;">{{ memberForm.title }}</div>
+        <div style="display:grid; grid-template-columns:{{ ui.formCols3 }}; gap:10px; margin-top:12px;">
+          <label style="font-size:13px; font-weight:700; color:#5F5F5F;">이름<input id="mf-name" value="{{ memberForm.name }}" style="display:block; width:100%; margin-top:5px; padding:11px 12px; border-radius:10px; border:1.5px solid #E2E1DC; background:#FFFFFF; font-family:inherit; font-size:15px; color:#141414; outline:none;"></label>
+          <label style="font-size:13px; font-weight:700; color:#5F5F5F;">포지션<select id="mf-pos" value="{{ memberForm.pos }}" style="display:block; width:100%; margin-top:5px; padding:11px 12px; border-radius:10px; border:1.5px solid #E2E1DC; background:#FFFFFF; font-family:inherit; font-size:15px; color:#141414; outline:none;"><option value="GK">GK</option><option value="DF">DF</option><option value="MF">MF</option><option value="FW">FW</option></select></label>
+          <label style="font-size:13px; font-weight:700; color:#5F5F5F;">구분<select id="mf-role" value="{{ memberForm.role }}" style="display:block; width:100%; margin-top:5px; padding:11px 12px; border-radius:10px; border:1.5px solid #E2E1DC; background:#FFFFFF; font-family:inherit; font-size:15px; color:#141414; outline:none;"><option value="member">팀원</option><option value="admin">운영진</option></select></label>
+        </div>
+        <sc-if value="{{ memberForm.error }}">
+          <div style="font-size:13px; font-weight:700; color:#A3190B; margin-top:10px;">{{ memberForm.error }}</div>
+        </sc-if>
+        <div style="display:flex; gap:8px; justify-content:flex-end; align-items:center; margin-top:14px;">
+          <sc-if value="{{ memberForm.canDelete }}">
+            <span onClick="{{ deleteMember }}" style="margin-right:auto; font-size:13px; font-weight:800; color:#A3190B; cursor:pointer; padding:8px 0;">명단에서 빼기</span>
+          </sc-if>
+          <div onClick="{{ cancelMember }}" style="min-height:42px; padding:0 18px; display:flex; align-items:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:#FFFFFF; color:#141414; border:1.5px solid #E2E1DC;">취소</div>
+          <div onClick="{{ saveMember }}" style="min-height:42px; padding:0 18px; display:flex; align-items:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:#141414; color:#FFFFFF; border:1.5px solid #141414;">저장</div>
+        </div>
+      </div>
+    </sc-if>
+    <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:{{ ui.listPad }};">
+      <div style="display:grid; grid-template-columns:{{ ui.memberCols }}; column-gap:24px;">
+        <sc-for list="{{ memberRows }}" as="m">
+          <div data-member="{{ m.key }}" onClick="{{ m.onClick }}" style="cursor:{{ m.cursor }}; display:{{ m.display }}; grid-template-columns:40px minmax(0,1fr) 92px; gap:12px; align-items:center; padding:10px 8px; border-bottom:1px solid #F2F1ED; background:{{ m.bg }}; border-radius:{{ m.radius }};">
+            <span style="width:40px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; background:{{ m.posBg }}; color:{{ m.posFg }};">{{ m.pos }}</span>
+            <div style="min-width:0;">
+              <div style="font-size:15px; font-weight:{{ m.weight }}; color:{{ m.fg }};">{{ m.name }}</div>
+              <div style="font-size:12px; color:#5F5F5F; margin-top:2px;">{{ m.sub }}</div>
+            </div>
+            <div>
+              <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:700; color:#5F5F5F;"><span>참석률</span><span style="color:#141414; font-weight:800;">{{ m.rate }}</span></div>
+              <div style="height:6px; border-radius:3px; background:#EFEFEB; margin-top:5px; overflow:hidden;"><div style="width:{{ m.rate }}; height:100%; background:{{ m.barFg }};"></div></div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div id="memberEmpty" data-show="{{ memberEmpty }}" style="text-align:center; font-size:13px; color:#5F5F5F; padding:28px 0;">찾는 구성원이 없어요.</div>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ pickerOpen }}">
+    <div data-screen-label="이름 선택" onClick="{{ closePicker }}" style="position:fixed; inset:0; z-index:200; background:rgba(20,20,20,.45); display:flex; align-items:flex-end; justify-content:center;">
+      <div onClick="{{ stop }}" style="width:100%; max-width:560px; max-height:82vh; background:#FFFFFF; border-radius:18px 18px 0 0; display:flex; flex-direction:column;">
+        <div style="padding:18px 20px 12px; border-bottom:1px solid #F0EFEB;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:17px; font-weight:800;">내 이름 선택</div>
+            <div onClick="{{ closePicker }}" style="width:36px; height:36px; border-radius:50%; background:#F3F3F0; color:#5F5F5F; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:800; cursor:pointer;">×</div>
+          </div>
+          <div style="font-size:13px; color:#5F5F5F; margin-top:4px;">선택한 이름은 이 기기에 저장돼요. 다른 사람 이름은 고르지 말아주세요.</div>
+          <input onInput="{{ onQuery }}" placeholder="이름 검색" style="width:100%; margin-top:12px; padding:12px 14px; border-radius:12px; border:1.5px solid #E2E1DC; background:#F6F6F4; font-family:'Pretendard'; font-size:15px; outline:none;">
+        </div>
+        <div style="overflow-y:auto; padding:14px 20px 24px; display:grid; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); gap:8px;">
+          <sc-for list="{{ pickList }}" as="p">
+            <div data-pick="{{ p.key }}" onClick="{{ p.onClick }}" style="min-height:48px; display:flex; align-items:center; justify-content:center; border-radius:12px; cursor:pointer; font-size:15px; font-weight:700; background:{{ p.bg }}; color:{{ p.fg }}; border:1.5px solid {{ p.bd }};">{{ p.name }}</div>
+          </sc-for>
+          <div id="pickEmpty" data-show="{{ pickEmpty }}" style="grid-column:1 / -1; text-align:center; font-size:13px; color:#5F5F5F; padding:20px 0;">명단에 없는 이름이에요. 운영진에게 등록을 요청해주세요.</div>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="display:{{ ui.bottomTabs }}; position:fixed; bottom:0; left:0; right:0; z-index:100; background:#FFFFFF; border-top:1px solid #EAEAE6;">
+    <sc-for list="{{ tabs }}" as="t">
+      <div onClick="{{ t.onClick }}" style="flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; padding:10px 4px calc(12px + env(safe-area-inset-bottom)); cursor:pointer;">
+        <span style="width:20px; height:3px; border-radius:2px; background:{{ t.bar }};"></span>
+        <span style="font-size:13px; font-weight:{{ t.weight }}; color:{{ t.color }};">{{ t.label }}</span>
+      </div>
+    </sc-for>
+  </div>
+
+</div>
+</template>
+
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-<script async defer src="https://apis.google.com/js/api.js" onload="gapiLoad()"></script>
-<script async defer src="https://accounts.google.com/gsi/client" onload="gisLoad()"></script>
+<script src="./config.js"></script>
+<script src="./renderer.js"></script>
+<script src="./app.js"></script>
 </body>
 </html>
