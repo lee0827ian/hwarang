@@ -14,7 +14,6 @@ window.HWARANG_CONFIG = {
   "kakaoMapKey": "47eed652b004605d8a8e3e39df268f24",
   // 카톡 공유 · 카카오내비: "화랑_매치" 앱(ID 1594176)의 키. 공유 카드에 이 앱 이름이 찍히고, 링크도 이 앱에 등록된 주소로 열린다.
   "kakaoAppKey": "f956dcd4bda6ac4ed033505d8ba3a3e3",
-  // "카톡방에 참석 투표 올리기" 버튼을 보여 줄 주소. 지금은 테스트(미리보기) 주소에서만 켠다.
-  // 운영에 열 때 "fchwarang.web.app"을 추가한다.
-  "kakaoShareHosts": ["fchwarang--redesign-4z3l01vw.web.app"]
+  // "카톡방에 참석 투표 올리기" 버튼을 보여 줄 주소(운영, 테스트). 화랑_매치 앱에 등록된 주소만 적는다.
+  "kakaoShareHosts": ["fchwarang.web.app", "fchwarang--redesign-4z3l01vw.web.app"]
 };
