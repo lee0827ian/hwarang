@@ -32,7 +32,7 @@ function loadKakaoMaps() {
   if (kakaoMapsReady) return kakaoMapsReady;
   kakaoMapsReady = new Promise((resolve, reject) => {
     const s = document.createElement('script');
-    s.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${CFG.kakaoJsKey}&autoload=false&libraries=services`;
+    s.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${CFG.kakaoMapKey}&autoload=false&libraries=services`;
     s.onload = () => window.kakao.maps.load(resolve);
     s.onerror = () => { kakaoMapsReady = null; reject(new Error('kakao maps sdk load failed')); };
     document.head.appendChild(s);
@@ -54,7 +54,7 @@ function geocode(address, name) {
   })).catch(() => null);
 }
 
-// ── 카카오 JS SDK(카카오내비 실행). 지도 SDK와 별개(window.Kakao) ──
+// ── 카카오 JS SDK(카카오내비 실행, 카톡 공유). 지도 SDK와 별개(window.Kakao)이고 키도 다르다(config.js 참고) ──
 let kakaoSdkReady = null;
 function loadKakaoSdk() {
   if (kakaoSdkReady) return kakaoSdkReady;
@@ -63,7 +63,7 @@ function loadKakaoSdk() {
     s.src = 'https://t1.kakaocdn.net/kakao_js_sdk/2.8.3/kakao.min.js';
     s.integrity = 'sha384-oroumrnFVE0xtgqyDZJARgERibXg2C28380uaUZz2kHDS5CR7tu20eGiOU6GkTpy';
     s.crossOrigin = 'anonymous';
-    s.onload = () => { if (!window.Kakao.isInitialized()) window.Kakao.init(CFG.kakaoJsKey); resolve(); };
+    s.onload = () => { if (!window.Kakao.isInitialized()) window.Kakao.init(CFG.kakaoAppKey); resolve(); };
     s.onerror = () => { kakaoSdkReady = null; reject(new Error('kakao js sdk load failed')); };
     document.head.appendChild(s);
   });

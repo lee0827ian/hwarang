@@ -12,7 +12,7 @@
 | `index.html` | 화면 템플릿. `{{ 값 }}`, `<sc-for>`, `<sc-if>`, `on*`은 `renderer.js`가 해석한다 |
 | `renderer.js` | 템플릿 해석기 |
 | `app.js` | 화면 로직과 데이터 연결 |
-| `config.js` | Firebase 웹 설정과 카카오 JavaScript 키. 브라우저에 공개되는 값만 둔다 |
+| `config.js` | Firebase 웹 설정과 카카오 JavaScript 키 2개(지도용, 공유·내비용). 브라우저에 공개되는 값만 둔다 |
 | `firestore.rules` | Firestore 권한 규칙 |
 | `assets/` | 로고 |
 

@@ -9,7 +9,11 @@ window.HWARANG_CONFIG = {
     "messagingSenderId": "620103429577",
     "appId": "1:620103429577:web:ad4598638b6a10ecb20c18"
   },
-  "kakaoJsKey": "47eed652b004605d8a8e3e39df268f24",
+  // 카카오 JavaScript 키는 두 개를 쓴다.
+  // 지도: "휘슬_STAT관리" 앱의 키. 카카오맵 무료 사용량은 계정의 첫 앱에만 주어져서 지도는 이 앱을 같이 쓴다.
+  "kakaoMapKey": "47eed652b004605d8a8e3e39df268f24",
+  // 카톡 공유 · 카카오내비: "화랑_매치" 앱(ID 1594176)의 키. 공유 카드에 이 앱 이름이 찍히고, 링크도 이 앱에 등록된 주소로 열린다.
+  "kakaoAppKey": "f956dcd4bda6ac4ed033505d8ba3a3e3",
   // "카톡방에 참석 투표 올리기" 버튼을 보여 줄 주소. 지금은 테스트(미리보기) 주소에서만 켠다.
   // 운영에 열 때 "fchwarang.web.app"을 추가한다.
   "kakaoShareHosts": ["fchwarang--redesign-4z3l01vw.web.app"]
