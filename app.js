@@ -185,6 +185,7 @@ class HwarangApp {
       draft: null, draftFor: null, sel: null, dirty: false, savedAt: 0, fmError: '',
       schedView: 'upcoming', schedSel: undefined, schedForm: null, resultForm: null,
       memberPos: 'all', memberForm: null,
+      recYear: null, recOpen: null, recAllAtt: false,
       isMobile: window.innerWidth < MOBILE_WIDTH
     };
   }
@@ -461,7 +462,7 @@ class HwarangApp {
 
     // 탭
     const go = k => () => { this.setState({ tab: k }); window.scrollTo(0, 0); };
-    const tabs = [['home', '홈'], ['formation', '포메이션'], ['schedule', '일정'], ['members', '구성원']].map(([k, l]) => {
+    const tabs = [['home', '홈'], ['formation', '포메이션'], ['schedule', '일정'], ['records', '기록'], ['members', '구성원']].map(([k, l]) => {
       const on = st.tab === k;
       return { label: l, onClick: go(k), color: on ? '#141414' : '#6B6B6B', weight: on ? 800 : 600, bar: on ? '#C71F10' : 'transparent' };
     });
@@ -704,6 +705,46 @@ class HwarangApp {
     });
     const mf = st.memberForm;
 
+    // ── 기록 탭: 시즌별 결과·득점·출석(출석은 참석 응답이 있는 지난 경기만, 득점은 경기 기록이 있는 경기만) ──
+    const hasRes = s => !!(s.result && Array.isArray(s.result.qs) && s.result.qs.length);
+    const recYears = [...new Set(pastAll.filter(s => hasRes(s) || tally(s).attend.length).map(s => s.date.slice(0, 4)))].sort().reverse();
+    const recYear = st.recYear && recYears.includes(st.recYear) ? st.recYear : (recYears[0] || year);
+    const recGames = pastAll.filter(s => s.date.slice(0, 4) === recYear && (hasRes(s) || tally(s).attend.length));
+    const played = recGames.filter(hasRes), attGames = recGames.filter(s => tally(s).attend.length);
+    const wdl = { w: 0, d: 0, l: 0 }; let gf = 0, ga = 0;
+    played.forEach(s => { gf += s.result.our; ga += s.result.their; wdl[s.result.our > s.result.their ? 'w' : s.result.our < s.result.their ? 'l' : 'd']++; });
+    const goals = {}, att = {};
+    played.forEach(s => s.result.qs.forEach(q => Object.entries(q.sc || {}).forEach(([k, n]) => { goals[k] = (goals[k] || 0) + n; })));
+    attGames.forEach(s => tally(s).attend.forEach(m => { att[m.id] = (att[m.id] || 0) + 1; }));
+    const avgAtt = attGames.length ? (attGames.reduce((x, s) => x + tally(s).attend.length + guestsOf(s).length, 0) / attGames.length).toFixed(1) : '-';
+    const rankRows = (entries, fmt) => {
+      let rank = 0, prev = null;
+      return entries.map(([id, n], i) => { if (n !== prev) { rank = i + 1; prev = n; } const isMe = String(id) === String(meId);
+        return { rank, name: byId[id] ? byId[id].name : '?', ...fmt(n), weight: isMe ? 800 : 600, fg: isMe ? '#A3190B' : '#141414', bg: isMe ? '#FBE9E6' : 'transparent' }; });
+    };
+    const scorerList = rankRows(Object.entries(goals).filter(([k]) => byId[k]).sort((a, b) => b[1] - a[1] || collator.compare(byId[a[0]].name, byId[b[0]].name)),
+      n => ({ value: n + '골', bar: (n / Math.max(1, ...Object.values(goals)) * 100).toFixed(0) + '%' }));
+    const attAll = rankRows(Object.entries(att).filter(([k]) => byId[k]).sort((a, b) => b[1] - a[1] || collator.compare(byId[a[0]].name, byId[b[0]].name)),
+      n => ({ value: n + '/' + attGames.length, bar: (n / Math.max(1, attGames.length) * 100).toFixed(0) + '%' }));
+    const recGameRows = recGames.map(s => {
+      const p = dateParts(s), r = hasRes(s) ? s.result : null, t = tally(s), gs = guestsOf(s), open = st.recOpen === s.id;
+      const lab = r ? (r.our > r.their ? '승' : r.our < r.their ? '패' : '무') : '';
+      const sc = {};
+      if (r) r.qs.forEach(q => Object.entries(q.sc || {}).forEach(([k, n]) => { sc[k] = (sc[k] || 0) + n; }));
+      const scName = k => (k === 'merc' ? '용병' : k === 'og' ? '상대 자책골' : (byId[k] ? byId[k].name : '?'));
+      return {
+        date: p.md, dow: p.dow, title: matchLabel(s) || s.venue || '', venue: s.venue || '',
+        score: r ? r.our + ' : ' + r.their : '기록 없음', label: lab, hasLabel: !!lab,
+        lbg: lab === '승' ? '#C71F10' : lab === '패' ? '#6B6B66' : '#D8C07A', lfg: lab === '무' ? '#3D2F08' : '#FFFFFF', scoreFg: r ? '#141414' : '#8A8A85',
+        meta: '참석 ' + (t.attend.length + gs.length) + '명' + (Object.keys(sc).length ? ' · 득점 ' + Object.entries(sc).sort((a, b) => b[1] - a[1]).map(([k, n]) => scName(k) + (n > 1 ? ' ' + n : '')).join(', ') : ''),
+        open, onClick: () => this.setState({ recOpen: open ? null : s.id }),
+        hasQs: !!r, qCols: r ? r.qs.length : 1, qs: r ? r.qs.map((q, i) => ({ label: (i + 1) + 'Q', score: q.our + ':' + q.their, fg: q.our > q.their ? '#A3190B' : '#141414' })) : [],
+        attendees: meFirst(t.attend).map(m => ({ name: m.name, bg: m === me ? '#141414' : '#FBE9E6', fg: m === me ? '#FFFFFF' : '#A3190B' })).concat(gs.map(x => ({ name: x.name + ' · 용병', bg: '#F6F0DC', fg: '#6E5513' }))),
+        noAttend: !t.attend.length && !gs.length
+      };
+    });
+    const extraGoals = [goals.merc ? '용병 ' + goals.merc + '골' : '', goals.og ? '상대 자책골 ' + goals.og : ''].filter(Boolean).join(' · ');
+
     return {
       ui, tabs,
       showNotice: !!notice, notice: notice || {},
@@ -774,6 +815,20 @@ class HwarangApp {
           .then(() => this.setState({ resultForm: null })).catch(() => alert('지우지 못했어요. 잠시 후 다시 눌러 주세요.'));
       },
       saveSched: () => { if (!sf.saving) this.saveSchedule(); },
+      // 기록
+      recordsReady: ready && st.tab === 'records',
+      recYears: recYears.length > 1 ? recYears.map(y => ({ label: y, onClick: () => this.setState({ recYear: y, recOpen: null }), bg: y === recYear ? '#141414' : '#FFFFFF', fg: y === recYear ? '#FFFFFF' : '#141414', bd: y === recYear ? '#141414' : '#E2E1DC' })) : [],
+      recSub: recYear + ' 시즌 · 결과는 경기 기록을 넣은 ' + played.length + '경기, 출석은 참석 응답이 있는 ' + attGames.length + '경기 기준',
+      recCards: [
+        { title: '경기', value: played.length, sub: wdl.w + '승 ' + wdl.d + '무 ' + wdl.l + '패' },
+        { title: '득점', value: gf, sub: played.length ? '경기당 ' + (gf / played.length).toFixed(1) : '-' },
+        { title: '실점', value: ga, sub: played.length ? '경기당 ' + (ga / played.length).toFixed(1) : '-' },
+        { title: '평균 참석', value: avgAtt, sub: '용병 포함' }
+      ],
+      scorerList, scorerEmpty: !scorerList.length, extraGoals, hasExtraGoals: !!extraGoals,
+      attList: st.recAllAtt ? attAll : attAll.slice(0, 10), attEmpty: !attAll.length,
+      attMore: attAll.length > 10, attMoreLabel: st.recAllAtt ? '접기' : '전체 ' + attAll.length + '명 보기', toggleAttMore: () => this.setState({ recAllAtt: !st.recAllAtt }),
+      recGameRows, recGamesEmpty: !recGameRows.length,
       // 구성원
       memberTotal: sorted.length + '명',
       memberSub: (seasonPast.length ? '참석률은 ' + year + ' 시즌 출석 기록이 있는 ' + seasonPast.length + '경기 기준이에요.' : '참석률은 경기가 끝난 뒤부터 집계돼요.') + (isAdmin ? ' 이름을 누르면 수정할 수 있어요.' : ''),

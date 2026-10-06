@@ -572,6 +572,96 @@
   </div>
   </sc-if>
 
+  <sc-if value="{{ recordsReady }}">
+  <div data-screen-label="기록" style="max-width:1120px; margin:0 auto; padding:{{ ui.mainPad }}; display:flex; flex-direction:column; gap:{{ ui.gap }};">
+    <div>
+      <div style="font-size:{{ ui.pageTitle }}; font-weight:800; letter-spacing:-.5px;">기록</div>
+      <div style="font-size:13px; color:#5F5F5F; margin-top:4px;">{{ recSub }}</div>
+    </div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+      <sc-for list="{{ recYears }}" as="y">
+        <div onClick="{{ y.onClick }}" style="min-height:36px; padding:0 14px; display:flex; align-items:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:{{ y.bg }}; color:{{ y.fg }}; border:1.5px solid {{ y.bd }};">{{ y.label }}</div>
+      </sc-for>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:8px;">
+      <sc-for list="{{ recCards }}" as="c">
+        <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:14px; padding:12px 10px; text-align:center; min-width:0;">
+          <div style="font-size:12px; font-weight:700; color:#5F5F5F;">{{ c.title }}</div>
+          <div style="font-size:24px; font-weight:800; letter-spacing:-.5px; margin-top:2px;">{{ c.value }}</div>
+          <div style="font-size:11.5px; color:#6B6B6B; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ c.sub }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:grid; grid-template-columns:{{ ui.schedCols }}; gap:{{ ui.gap }}; align-items:start;">
+      <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:{{ ui.cardPad }}; min-width:0;">
+        <div style="font-size:16px; font-weight:800;">득점 순위</div>
+        <sc-if value="{{ scorerEmpty }}"><div style="font-size:13px; color:#5F5F5F; padding:14px 0 4px;">아직 득점 기록이 없어요. 운영진이 일정 탭의 지난 경기에서 경기 기록을 넣으면 여기에 모여요.</div></sc-if>
+        <div style="margin-top:8px;">
+          <sc-for list="{{ scorerList }}" as="r">
+            <div style="display:grid; grid-template-columns:26px minmax(0,1fr) 92px 44px; gap:8px; align-items:center; min-height:38px; padding:0 6px; border-radius:8px; background:{{ r.bg }};">
+              <span style="font-size:13px; font-weight:800; color:#8A8A85;">{{ r.rank }}</span>
+              <span style="font-size:14px; font-weight:{{ r.weight }}; color:{{ r.fg }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.name }}</span>
+              <div style="height:6px; border-radius:3px; background:#EFEFEB; overflow:hidden;"><div style="width:{{ r.bar }}; height:100%; background:#C71F10;"></div></div>
+              <span style="text-align:right; font-size:14px; font-weight:800;">{{ r.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ hasExtraGoals }}"><div style="font-size:12.5px; color:#6B6B6B; margin-top:8px; padding-top:8px; border-top:1px solid #F0EFEB;">그 밖에 {{ extraGoals }}</div></sc-if>
+      </div>
+      <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:{{ ui.cardPad }}; min-width:0;">
+        <div style="font-size:16px; font-weight:800;">출석 순위</div>
+        <sc-if value="{{ attEmpty }}"><div style="font-size:13px; color:#5F5F5F; padding:14px 0 4px;">아직 출석 기록이 없어요.</div></sc-if>
+        <div style="margin-top:8px;">
+          <sc-for list="{{ attList }}" as="r">
+            <div style="display:grid; grid-template-columns:26px minmax(0,1fr) 92px 44px; gap:8px; align-items:center; min-height:38px; padding:0 6px; border-radius:8px; background:{{ r.bg }};">
+              <span style="font-size:13px; font-weight:800; color:#8A8A85;">{{ r.rank }}</span>
+              <span style="font-size:14px; font-weight:{{ r.weight }}; color:{{ r.fg }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.name }}</span>
+              <div style="height:6px; border-radius:3px; background:#EFEFEB; overflow:hidden;"><div style="width:{{ r.bar }}; height:100%; background:#D8C07A;"></div></div>
+              <span style="text-align:right; font-size:14px; font-weight:800;">{{ r.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ attMore }}"><div onClick="{{ toggleAttMore }}" style="margin-top:8px; min-height:38px; display:flex; align-items:center; justify-content:center; border-radius:10px; background:#F6F6F4; font-size:13px; font-weight:800; cursor:pointer;">{{ attMoreLabel }}</div></sc-if>
+      </div>
+    </div>
+    <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:{{ ui.cardPad }}; min-width:0;">
+      <div style="font-size:16px; font-weight:800;">경기별 기록</div>
+      <sc-if value="{{ recGamesEmpty }}"><div style="font-size:13px; color:#5F5F5F; padding:14px 0 4px;">아직 기록이 있는 경기가 없어요.</div></sc-if>
+      <sc-for list="{{ recGameRows }}" as="g">
+        <div style="border-top:1px solid #F0EFEB; margin-top:8px;">
+          <div onClick="{{ g.onClick }}" style="display:grid; grid-template-columns:52px minmax(0,1fr) auto; gap:12px; align-items:center; padding:12px 4px; cursor:pointer;">
+            <div><div style="font-size:18px; font-weight:800; letter-spacing:-.5px;">{{ g.date }}</div><div style="font-size:12px; font-weight:700; color:#5F5F5F;">{{ g.dow }}요일</div></div>
+            <div style="min-width:0;">
+              <div style="font-size:15px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ g.title }}</div>
+              <div style="font-size:12.5px; color:#5F5F5F; margin-top:3px;">{{ g.meta }}</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="font-size:17px; font-weight:800; color:{{ g.scoreFg }}; white-space:nowrap;">{{ g.score }}</span>
+              <sc-if value="{{ g.hasLabel }}"><span style="font-size:12px; font-weight:800; padding:3px 8px; border-radius:7px; background:{{ g.lbg }}; color:{{ g.lfg }};">{{ g.label }}</span></sc-if>
+            </div>
+          </div>
+          <sc-if value="{{ g.open }}">
+            <div style="padding:0 4px 14px; display:flex; flex-direction:column; gap:10px;">
+              <sc-if value="{{ g.hasQs }}">
+                <div style="display:grid; grid-template-columns:repeat({{ g.qCols }}, minmax(0,1fr)); gap:4px;">
+                  <sc-for list="{{ g.qs }}" as="q">
+                    <div style="text-align:center; background:#F6F6F4; border-radius:8px; padding:6px 0;"><div style="font-size:11px; font-weight:700; color:#6B6B6B;">{{ q.label }}</div><div style="font-size:14px; font-weight:800; color:{{ q.fg }};">{{ q.score }}</div></div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <div style="font-size:13px; font-weight:800; color:#5F5F5F;">참석자</div>
+              <sc-if value="{{ g.noAttend }}"><div style="font-size:13px; color:#8A8A85;">참석 응답 기록이 없어요.</div></sc-if>
+              <div style="display:flex; flex-wrap:wrap; gap:5px;">
+                <sc-for list="{{ g.attendees }}" as="a"><span style="font-size:13px; font-weight:700; padding:5px 10px; border-radius:9px; background:{{ a.bg }}; color:{{ a.fg }};">{{ a.name }}</span></sc-for>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  </sc-if>
+
   <sc-if value="{{ pickerOpen }}">
     <div data-screen-label="이름 선택" onClick="{{ closePicker }}" style="position:fixed; inset:0; z-index:200; background:rgba(20,20,20,.45); display:flex; align-items:flex-end; justify-content:center;">
       <div onClick="{{ stop }}" style="width:100%; max-width:560px; max-height:82vh; background:#FFFFFF; border-radius:18px 18px 0 0; display:flex; flex-direction:column;">
