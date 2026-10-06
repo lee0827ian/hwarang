@@ -7,7 +7,9 @@
 //   hw_schedules/{id}     { date: 'YYYY-MM-DD', time, venue, address, opponent, lat, lng,
 //                           rsvp: { [구성원 id]: 'attend'|'maybe'|'absent' },
 //                           guests: { [용병 id]: { name, by: 데려온 구성원 id, at } },
-//                           quarters: [{ [자리]: 구성원 id 또는 용병 id } × 4쿼터] }
+//                           qn: 쿼터 수(4 또는 6, 없으면 4),
+//                           quarters: [{ [자리]: 구성원 id 또는 용병 id } × 쿼터 수],
+//                           result: { qs: [{ our, their, sc: { [구성원 id | 'merc' | 'og']: 골 } } × 쿼터], our, their, at, by } }
 
 const CFG = window.HWARANG_CONFIG;
 const MIN_PLAYERS = 11;                 // 경기 가능 최소 인원
@@ -19,6 +21,51 @@ const LABEL = { attend: '참석', maybe: '미정', absent: '불참' };
 // 상태별 색: [연한 배경, 연한 배경 위 글자, 진한 배경, 진한 배경 위 글자]
 const PAL = { attend: ['#FBE9E6', '#A3190B', '#C71F10', '#FFFFFF'], maybe: ['#F6F0DC', '#6E5513', '#D8C07A', '#3D2F08'], absent: ['#F0F0EC', '#4F4F4F', '#6B6B66', '#FFFFFF'] };
 const DOW = '일월화수목금토';
+const range = n => Array.from({ length: n }, (_, i) => i);
+// 경기의 쿼터 수: 저장된 값(qn)이 6이거나 배치가 5쿼터 이상이면 6, 아니면 4
+const qnOf = s => (s && (s.qn === 6 || (Array.isArray(s.quarters) && s.quarters.length > 4)) ? 6 : 4);
+
+// ── 카톡 쿼터 기록 읽기 ──
+// 한 줄에 한 쿼터: "2쿼터 - 1 : 1 (기현)", 왼쪽=화랑·오른쪽=상대, 괄호=우리 득점자(2골이면 "준원2", 여럿이면 쉼표).
+// PC 카톡에서 복사할 때 붙는 "[보낸 사람] [오전 7:58]" 같은 앞부분은 무시한다. "용병"=용병 골, "자책골"=상대 자책골.
+function parseQuarterLog(text, members) {
+  const qs = [], errors = [], warnings = [];
+  const given = n => (n.length === 3 ? n.slice(1) : n);
+  const resolve = raw => {
+    const n = raw.replace(/\s+/g, '');
+    if (n === '용병') return { key: 'merc', name: '용병' };
+    if (/^(상대)?(자책|자책골|자살골)$/.test(n)) return { key: 'og', name: '자책골' };
+    let hit = members.filter(m => m.name.replace(/\s+/g, '') === n);
+    if (!hit.length) hit = members.filter(m => given(m.name.replace(/\s+/g, '')) === n);
+    if (hit.length === 1) return { key: String(hit[0].id), name: hit[0].name };
+    return { error: hit.length ? '"' + raw + '" 같은 이름이 ' + hit.length + '명(' + hit.map(m => m.name).join('/') + ') — 성까지 적어 주세요' : '"' + raw + '" 명단에서 못 찾음 — 이름을 확인해 주세요' };
+  };
+  for (const line of String(text).split(/\r?\n/)) {
+    const m = /(\d+)\s*쿼터\s*[-–—:]?\s*(\d+)\s*[:：]\s*(\d+)\s*(?:\(([^)]*)\))?/.exec(line);
+    if (!m) continue;
+    const q = Number(m[1]), our = Number(m[2]), their = Number(m[3]);
+    if (q < 1 || q > 8) { errors.push(line.trim() + ' — 쿼터 번호 확인'); continue; }
+    const sc = {}, names = [], before = errors.length;
+    for (const tok of (m[4] || '').split(/[,，、\/]/).map(t => t.trim()).filter(Boolean)) {
+      const t = /^(\D+?)\s*(\d+)?\s*(골)?$/.exec(tok);
+      if (!t) { errors.push(q + '쿼터 "' + tok + '" — 읽지 못함'); continue; }
+      const r = resolve(t[1]);
+      if (r.error) { errors.push(q + '쿼터 ' + r.error); continue; }
+      const k = Number(t[2] || 1);
+      sc[r.key] = (sc[r.key] || 0) + k;
+      names.push(r.name + (k > 1 ? ' ' + k : ''));
+    }
+    const sum = Object.values(sc).reduce((x, y) => x + y, 0);
+    if (errors.length === before && sum !== our) warnings.push(q + '쿼터 득점자 ' + sum + '골 ≠ 화랑 점수 ' + our);
+    if (qs[q - 1]) warnings.push(q + '쿼터가 두 번 있어요(뒤에 것을 씀)');
+    qs[q - 1] = { our, their, sc, names };
+  }
+  const n = qs.length;
+  for (let i = 0; i < n; i++) if (!qs[i]) errors.push((i + 1) + '쿼터 기록이 없어요');
+  if (!n) errors.push('"1쿼터 - 0 : 1" 같은 줄을 찾지 못했어요');
+  return { qs, errors, warnings };
+}
+window.parseQuarterLog = parseQuarterLog;
 
 // 기기 시간대 기준 오늘 날짜(YYYY-MM-DD)
 const localDate = () => { const n = new Date(); return new Date(n - n.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
@@ -136,7 +183,7 @@ class HwarangApp {
       pickerOpen: false, rsvpEditing: false, mapOpen: false, rosterOpen: null,
       guestForm: null,
       draft: null, draftFor: null, sel: null, dirty: false, savedAt: 0, fmError: '',
-      schedView: 'upcoming', schedSel: undefined, schedForm: null,
+      schedView: 'upcoming', schedSel: undefined, schedForm: null, resultForm: null,
       memberPos: 'all', memberForm: null,
       isMobile: window.innerWidth < MOBILE_WIDTH
     };
@@ -196,7 +243,7 @@ class HwarangApp {
   // 글자를 입력하는 창이 열려 있을 때는 다시 그리지 않는다(입력 중인 글이 지워지므로). 창을 닫으면 최신 데이터로 그려진다.
   dataChanged() {
     this.applyPendingRsvp();
-    if (this.state.pickerOpen || this.state.schedForm || this.state.memberForm || this.state.guestForm) return;
+    if (this.state.pickerOpen || this.state.schedForm || this.state.memberForm || this.state.guestForm || this.state.resultForm) return;
     this.render();
   }
 
@@ -284,11 +331,26 @@ class HwarangApp {
     }
     this.db.collection('hw_schedules').doc(s.id).update(patch).catch(() => alert('빼지 못했어요. 잠시 후 다시 눌러 주세요.'));
   }
-  // 문서의 쿼터 배치 → 편집용 [[자리, 구성원 id 또는 null] × 11] × 4. 저장된 것이 없으면 null
+  // 문서의 쿼터 배치 → 편집용 [[자리, 구성원 id 또는 null] × 11] × 쿼터 수. 저장된 것이 없으면 null
   quartersOf(s) {
     const q = s && s.quarters;
     if (!Array.isArray(q) || !q.length) return null;
-    return [0, 1, 2, 3].map(i => SLOTS.map(slot => [slot, q[i] && q[i][slot] != null ? q[i][slot] : null]));
+    return range(qnOf(s)).map(i => SLOTS.map(slot => [slot, q[i] && q[i][slot] != null ? q[i][slot] : null]));
+  }
+  // 카톡 쿼터 기록: 읽어서 미리 보여 주거나(save=false) 저장한다
+  submitResult(save) {
+    const f = this.state.resultForm;
+    const text = el('rf-text') ? el('rf-text').value : f.text;
+    const p = parseQuarterLog(text, this.members || []);
+    const preview = p.qs.map((q, i) => (i + 1) + '쿼터  ' + q.our + ' : ' + q.their + (q.names.length ? '  (' + q.names.join(', ') + ')' : ''));
+    const our = p.qs.reduce((x, q) => x + q.our, 0), their = p.qs.reduce((x, q) => x + q.their, 0);
+    const next = { ...f, text, preview, errors: p.errors, warnings: p.warnings, total: p.qs.length ? '합계 ' + our + ' : ' + their + ' (' + (our > their ? '승' : our < their ? '패' : '무') + ')' : '', checked: true };
+    if (!save || p.errors.length) { this.setState({ resultForm: { ...next, error: save && p.errors.length ? '빨간 줄을 고친 뒤 다시 저장해 주세요.' : '' } }); return; }
+    this.setState({ resultForm: { ...next, saving: true, error: '' } });
+    const result = { qs: p.qs.map(q => ({ our: q.our, their: q.their, sc: q.sc })), our, their, at: Date.now(), by: this.state.me || null };
+    this.db.collection('hw_schedules').doc(f.id).update({ result, updatedAt: Date.now() })
+      .then(() => this.setState({ resultForm: null, schedSel: f.id }))
+      .catch(() => this.setState({ resultForm: { ...next, saving: false, error: '저장하지 못했어요. 잠시 후 다시 눌러 주세요.' } }));
   }
   saveSchedule() {
     const f = this.state.schedForm;
@@ -465,6 +527,7 @@ class HwarangApp {
     // ── 포메이션 ──
     const draft = next && st.draft && st.draftFor === next.id ? st.draft : null;
     const QE = draft || this.quartersOf(next);
+    const nq = QE ? QE.length : qnOf(next), QR = range(nq), qi = Math.min(st.q, nq - 1);
     const fmReadyData = !!QE && QE.some(q => q.some(x => x[1] != null));
     const editing = isAdmin && !!QE;
     const setQ = fn => this.setState(() => {
@@ -473,13 +536,13 @@ class HwarangApp {
       return { draft: cur, draftFor: next.id, sel: null, dirty: true, fmError: '' };
     });
     const posOf = (id, qi) => { if (!QE) return null; const f = QE[qi].find(x => x[1] === id); return f ? posName(f[0]) : null; };
-    const slots = QE ? QE[st.q] : SLOTS.map(s => [s, null]);
+    const slots = QE ? QE[qi] : SLOTS.map(s => [s, null]);
     const sel = st.sel;
     const clickSlot = idx => () => {
       if (!editing) return;
       if (sel && sel.kind === 'slot' && sel.idx === idx) return this.setState({ sel: null });
-      if (sel && sel.kind === 'slot') return setQ(c => { const a = c[st.q]; const t = a[idx][1]; a[idx][1] = a[sel.idx][1]; a[sel.idx][1] = t; });
-      if (sel && sel.kind === 'bench') return setQ(c => { c[st.q][idx][1] = sel.id; });
+      if (sel && sel.kind === 'slot') return setQ(c => { const a = c[qi]; const t = a[idx][1]; a[idx][1] = a[sel.idx][1]; a[sel.idx][1] = t; });
+      if (sel && sel.kind === 'bench') return setQ(c => { c[qi][idx][1] = sel.id; });
       this.setState({ sel: { kind: 'slot', idx } });
     };
     const pitchSlots = slots.map(([s, id], idx) => {
@@ -490,7 +553,7 @@ class HwarangApp {
       if (id == null) return { ...base, name: '', bg: 'rgba(255,255,255,.1)', fg: '#FFFFFF', posFg: '#FFFFFF', bd: 'rgba(255,255,255,.6)', bdStyle: 'dashed', shadow: 'none' };
       return { ...base, name: nameOf(id), bg: isMe ? '#C71F10' : '#FFFFFF', fg: isMe ? '#FFFFFF' : '#141414', posFg: isMe ? '#F3DFA0' : '#6B6B6B', bd: isMe ? '#D8C07A' : '#FFFFFF', bdStyle: 'solid', shadow: isMe ? '0 0 0 3px rgba(216,192,122,.55), 0 2px 6px rgba(0,0,0,.25)' : '0 2px 6px rgba(0,0,0,.2)' };
     });
-    const myPos = [0, 1, 2, 3].map(i => (me && fmReadyData ? posOf(meId, i) : null));
+    const myPos = QR.map(i => (me && fmReadyData ? posOf(meId, i) : null));
     const inLineup = !!me && fmReadyData && myPos.some(Boolean);
     let summaryText;
     if (!fmReadyData) summaryText = '포메이션이 올라오면 여기 바로 보여요';
@@ -502,18 +565,18 @@ class HwarangApp {
       summaryText = play.join(' · ') + (rest.length ? ' · ' + rest.join(', ') + '쿼터 휴식' : '');
     }
     const mySummary = { text: summaryText, bg: inLineup ? '#FBE9E6' : '#F6F6F4', fg: inLineup ? '#141414' : '#5F5F5F', fg2: inLineup ? '#141414' : '#5F5F5F', labelFg: inLineup ? '#A3190B' : '#5F5F5F' };
-    const myQuarters = [0, 1, 2, 3].map(i => {
+    const myQuarters = QR.map(i => {
       const p = myPos[i];
       return { q: (i + 1) + '쿼터', pos: p || (fmReadyData && me ? '휴식' : '-'), bg: p ? '#C71F10' : '#F6F6F4', fg: p ? '#FFFFFF' : '#5F5F5F', sub: p ? '#F3DFA0' : '#6B6B6B' };
     });
-    const qButtons = [0, 1, 2, 3].map(i => {
-      const on = st.q === i;
+    const qButtons = QR.map(i => {
+      const on = qi === i;
       return { label: (i + 1) + '쿼터', onClick: () => this.setState({ q: i, sel: null }), bg: on ? '#141414' : '#FFFFFF', fg: on ? '#FFFFFF' : '#141414', bd: on ? '#141414' : '#E2E1DC', dot: myPos[i] ? '#E53B1F' : 'transparent' };
     });
     const attendIds = g.attend.map(m => m.id).concat(nextGuests.map(x => x.id));
-    const restIds = attendIds.filter(id => !posOf(id, st.q));
+    const restIds = attendIds.filter(id => !posOf(id, qi));
     const filled = slots.filter(x => x[1] != null).length;
-    const qInfo = QE ? { field: (st.q + 1) + '쿼터 휴식 ' + restIds.length + '명', rest: '필드 ' + filled + '/11' } : { field: '4-2-3-1 · 11명', rest: '배치 전' };
+    const qInfo = QE ? { field: (qi + 1) + '쿼터 휴식 ' + restIds.length + '명', rest: '필드 ' + filled + '/11' } : { field: '4-2-3-1 · 11명', rest: '배치 전' };
     const benchList = (QE ? restIds : []).map(id => {
       const isSel = editing && sel && sel.kind === 'bench' && sel.id === id;
       const isMe = id === meId;
@@ -523,28 +586,28 @@ class HwarangApp {
         onClick: () => {
           if (!editing) return;
           if (isSel) return this.setState({ sel: null });
-          if (sel && sel.kind === 'slot') return setQ(c => { c[st.q][sel.idx][1] = id; });
+          if (sel && sel.kind === 'slot') return setQ(c => { c[qi][sel.idx][1] = id; });
           this.setState({ sel: { kind: 'bench', id } });
         } };
     });
     // 선수가 들어 있는 자리를 골랐을 때만: 그 자리를 비우는 버튼
     if (editing && sel && sel.kind === 'slot' && slots[sel.idx][1] != null) {
-      benchList.push({ name: '이 자리 비우기', h: '40px', cursor: 'pointer', bg: '#FFFFFF', fg: '#A3190B', bd: '#E8B4AD', bdStyle: 'solid', onClick: () => setQ(c => { c[st.q][sel.idx][1] = null; }) });
+      benchList.push({ name: '이 자리 비우기', h: '40px', cursor: 'pointer', bg: '#FFFFFF', fg: '#A3190B', bd: '#E8B4AD', bdStyle: 'solid', onClick: () => setQ(c => { c[qi][sel.idx][1] = null; }) });
     }
     const editHint = sel ? (sel.kind === 'bench' ? nameOf(sel.id) + ' 선택됨 · 넣을 자리를 누르세요' : '선택됨 · 바꿀 선수나 휴식 인원을 누르세요') : '선수를 눌러 선택한 뒤, 다른 자리나 휴식 인원을 누르면 바뀌어요';
     const saveBtn = st.dirty ? { label: '저장', bg: '#C71F10', fg: '#FFFFFF' } : { label: st.savedAt ? '저장됨' : '변경 없음', bg: '#FFFFFF', fg: '#6B6B6B' };
-    const qHeads = [0, 1, 2, 3].map(i => ({ label: (i + 1) + 'Q', fg: st.q === i ? '#C71F10' : '#5F5F5F' }));
+    const qHeads = QR.map(i => ({ label: (i + 1) + 'Q', fg: qi === i ? '#C71F10' : '#5F5F5F' }));
     // 출전표: 참석자 + (참석이 아니어도) 배치된 사람 + 용병
     const placedIds = QE ? [...new Set(QE.flatMap(q => q.map(x => x[1]).filter(id => id != null)))] : [];
     const lineupMembers = meFirst(sorted.filter(m => attendIds.includes(m.id) || placedIds.includes(m.id)))
       .concat(nextGuests.map(x => ({ id: x.id, name: x.name + ' (용병)' })));
     const lineupRows = lineupMembers.map(m => {
       const isMe = m === me;
-      const ps = [0, 1, 2, 3].map(i => posOf(m.id, i));
+      const ps = QR.map(i => posOf(m.id, i));
       return {
         name: isMe ? m.name + ' (나)' : m.name, weight: isMe ? 800 : 600, fg: isMe ? '#A3190B' : '#141414', bg: isMe ? '#FBE9E6' : 'transparent', radius: isMe ? '8px' : '0',
-        count: ps.filter(Boolean).length + '/4',
-        cells: ps.map((p, i) => ({ text: p || '휴식', size: p ? '13px' : '12px', weight: p ? 800 : 600, fg: p ? (isMe ? '#FFFFFF' : '#141414') : '#8A8A85', bg: p ? (isMe ? '#C71F10' : (st.q === i ? '#F6F0DC' : '#F3F3F0')) : 'transparent' }))
+        count: ps.filter(Boolean).length + '/' + nq,
+        cells: ps.map((p, i) => ({ text: p || '휴식', size: p ? '13px' : '12px', weight: p ? 800 : 600, fg: p ? (isMe ? '#FFFFFF' : '#141414') : '#8A8A85', bg: p ? (isMe ? '#C71F10' : (qi === i ? '#F6F0DC' : '#F3F3F0')) : 'transparent' }))
       };
     });
 
@@ -566,12 +629,31 @@ class HwarangApp {
       const apps = open ? navLinks(s) : [];
       const gray = text => ({ chip: text, chipBg: '#F0F0EC', chipFg: '#4F4F4F', chipBd: 'transparent' });
       // 지난 일정: 출석 기록이 하나도 없으면 "기록 없음", 있으면 내 출석 여부(이름을 안 골랐으면 참석 인원)
+      const res = s.result && Array.isArray(s.result.qs) && s.result.qs.length ? s.result : null;
+      const resLabel = res ? (res.our > res.their ? '승' : res.our < res.their ? '패' : '무') : '';
+      const scorerTotals = {};
+      if (res) res.qs.forEach(q => Object.entries(q.sc || {}).forEach(([k, n]) => { scorerTotals[k] = (scorerTotals[k] || 0) + n; }));
+      const scorerName = k => (k === 'merc' ? '용병' : k === 'og' ? '상대 자책골' : (byId[k] ? byId[k].name : '?'));
       const pastChip = !a ? gray('기록 없음') : !me ? gray('참석 ' + a) : mine === 'attend' ? { chip: '출석', chipBg: '#141414', chipFg: '#FFFFFF', chipBd: 'transparent' } : gray('결석');
       return {
         ...(isPast ? pastChip : chipFor(mine)),
         monthLabel: p.month, date: p.md, dow: p.dow + '요일', venue: s.venue || '구장 미정', address: s.address || '',
         isNext: !isPast && next && s.id === next.id, dday: ddayOf(s), dateFg: isPast ? '#6B6B6B' : '#141414',
-        meta: [s.time, matchLabel(s), '참석 ' + a + '명'].filter(Boolean).join(' · '),
+        meta: [s.time, matchLabel(s), res ? res.our + ':' + res.their + ' ' + resLabel : '', '참석 ' + a + '명'].filter(Boolean).join(' · '),
+        hasResult: !!res,
+        res: res ? {
+          score: '화랑 ' + res.our + ' : ' + res.their + (s.opponent ? ' ' + s.opponent : ''), label: resLabel,
+          bg: resLabel === '승' ? '#C71F10' : resLabel === '패' ? '#6B6B66' : '#D8C07A', fg: resLabel === '무' ? '#3D2F08' : '#FFFFFF',
+          cols: res.qs.length, qs: res.qs.map((q, i) => ({ label: (i + 1) + 'Q', score: q.our + ':' + q.their, fg: q.our > q.their ? '#A3190B' : '#141414' })),
+          scorers: Object.entries(scorerTotals).sort((x, y) => y[1] - x[1]).map(([k, n]) => scorerName(k) + (n > 1 ? ' ' + n : '')).join(' · '),
+          hasScorers: Object.keys(scorerTotals).length > 0
+        } : {},
+        canRecord: isAdmin && s.date <= today, recordLabel: res ? '경기 기록 수정' : '경기 기록 입력',
+        onRecord: () => {
+          const txt = res ? res.qs.map((q, i) => (i + 1) + '쿼터 - ' + q.our + ' : ' + q.their + (Object.keys(q.sc || {}).length ? ' (' + Object.entries(q.sc).map(([k, n]) => (k === 'merc' ? '용병' : k === 'og' ? '자책골' : (byId[k] ? byId[k].name : '?')) + (n > 1 ? n : '')).join(', ') + ')' : '')).join('\n') : '';
+          this.setState({ resultForm: { id: s.id, title: p.md + ' ' + (s.opponent ? 'vs ' + s.opponent : s.venue || '') + ' 경기 기록', text: txt, hasExisting: !!res, preview: [], errors: [], warnings: [], total: '', error: '', checked: false } });
+          window.scrollTo(0, 0);
+        },
         open, onClick: () => this.setState({ schedSel: open ? null : s.id }),
         a, guestNote: gs ? ' (용병 ' + gs + '명 포함)' : '', m: m2, x, none: t.none.length, barA: pct(a, total), barM: pct(m2, total), barX: pct(x, total),
         canAnswer: !isPast && !!me, navApps: apps, navCols: navCols(apps),
@@ -596,6 +678,10 @@ class HwarangApp {
     const year = today.slice(0, 4);
     // 참석률은 올해 지난 일정 중 출석 기록이 있는 경기만 센다(기록 없이 일정만 올린 경기는 뺀다)
     const seasonPast = pastAll.filter(s => s.date.slice(0, 4) === year && tally(s).attend.length > 0);
+    // 시즌 골: 올해 경기 기록(result)의 득점자 합계
+    const seasonGoals = {};
+    schedules.filter(s => s.date.slice(0, 4) === year && s.result && Array.isArray(s.result.qs))
+      .forEach(s => s.result.qs.forEach(q => Object.entries(q.sc || {}).forEach(([k, n]) => { seasonGoals[k] = (seasonGoals[k] || 0) + n; })));
     const counts = { all: sorted.length, GK: 0, DF: 0, MF: 0, FW: 0 };
     sorted.forEach(m => { if (counts[m.pos] != null) counts[m.pos]++; });
     const posFilters = [['all', '전체'], ['GK', 'GK'], ['DF', 'DF'], ['MF', 'MF'], ['FW', 'FW']].map(([k, l]) => {
@@ -609,7 +695,7 @@ class HwarangApp {
       const rate = seasonPast.length ? Math.round(att / seasonPast.length * 100) + '%' : '0%';
       const s = statusOf(next, m.id);
       return { name: (isMe ? m.name + ' (나)' : m.name) + (m.admin ? ' · 운영진' : ''), key: keyOf(m), pos: m.pos || '-',
-        sub: [next ? '이번 경기 ' + (s ? LABEL[s] : '미응답') : '', seasonPast.length ? '참석 ' + att + '/' + seasonPast.length : ''].filter(Boolean).join(' · '),
+        sub: [next ? '이번 경기 ' + (s ? LABEL[s] : '미응답') : '', seasonPast.length ? '참석 ' + att + '/' + seasonPast.length : '', seasonGoals[m.id] ? year + ' 시즌 ' + seasonGoals[m.id] + '골' : ''].filter(Boolean).join(' · '),
         rate, display: !mq || keyOf(m).includes(mq) ? 'grid' : 'none',
         weight: isMe ? 800 : 700, fg: isMe ? '#A3190B' : '#141414', bg: isMe ? '#FBE9E6' : 'transparent', radius: isMe ? '10px' : '0',
         posBg: m.pos === 'GK' ? '#F6F0DC' : '#F3F3F0', posFg: m.pos === 'GK' ? '#6E5513' : '#141414', barFg: seasonPast.length && att / seasonPast.length >= 0.7 ? '#C71F10' : '#A8A8A2',
@@ -651,13 +737,23 @@ class HwarangApp {
       formationEmpty: !fmReadyData, formationReady: fmReadyData,
       memberNote: !isAdmin && fmReadyData, benchList, editHint, saveBtn, fmError: st.fmError,
       emptyMsg: isAdmin ? '포메이션 만들기를 누르면 빈 자리에 참석자를 넣을 수 있어요.' : '운영진이 참석 인원을 확인하고 경기 전날까지 올려요. 올라오면 내 포지션이 맨 위에 바로 보여요.',
-      startEdit: () => this.setState({ draft: [0, 1, 2, 3].map(() => SLOTS.map(s => [s, null])), draftFor: next.id, dirty: false, sel: null }),
-      canCopyPrev: editing && st.q > 0,
-      copyPrev: () => setQ(c => { c[st.q] = c[st.q - 1].map(x => x.slice()); }),
+      startEdit: () => this.setState({ draft: range(qnOf(next)).map(() => SLOTS.map(s => [s, null])), draftFor: next.id, dirty: false, sel: null }),
+      qCols: nq, qCellW: nq > 4 ? '38px' : '46px',
+      // 쿼터 수 바꾸기(4 ↔ 6). 줄일 때 5·6쿼터에 배치가 있으면 확인
+      qnLabel: nq === 4 ? '6쿼터로 바꾸기' : '4쿼터로 바꾸기',
+      toggleQn: () => {
+        const n2 = nq === 4 ? 6 : 4;
+        const base = QE ? QE.map(q => q.map(x => x.slice())) : range(nq).map(() => SLOTS.map(s => [s, null]));
+        if (n2 < nq && base.slice(n2).some(q => q.some(x => x[1] != null)) && !confirm('5·6쿼터 배치가 지워져요. 4쿼터로 바꿀까요?')) return;
+        const cur = range(n2).map(i => base[i] || SLOTS.map(s => [s, null]));
+        this.setState({ draft: cur, draftFor: next.id, dirty: true, sel: null, q: Math.min(st.q, n2 - 1), fmError: '' });
+      },
+      canCopyPrev: editing && qi > 0,
+      copyPrev: () => setQ(c => { c[qi] = c[qi - 1].map(x => x.slice()); }),
       saveEdit: () => {
         if (!st.dirty || !draft) return;
         const quarters = draft.map(q => { const o = {}; q.forEach(([slot, id]) => { if (id != null) o[slot] = id; }); return o; });
-        this.db.collection('hw_schedules').doc(next.id).update({ quarters, updatedAt: Date.now() })
+        this.db.collection('hw_schedules').doc(next.id).update({ quarters, qn: quarters.length, updatedAt: Date.now() })
           .then(() => this.setState({ draft: null, draftFor: null, dirty: false, sel: null, savedAt: Date.now(), fmError: '' }))
           .catch(() => this.setState({ fmError: '저장하지 못했어요. 잠시 후 다시 눌러 주세요.' }));
       },
@@ -667,6 +763,16 @@ class HwarangApp {
       schedFormOpen: !!sf, schedForm: sf ? { ...sf, saveLabel: sf.saving ? '저장 중...' : sf.saveLabel } : {},
       addSched: () => this.setState({ schedForm: { id: null, title: '일정 추가', saveLabel: '추가', date: '', time: '', venue: '', address: '', opponent: '', error: '' } }),
       cancelSched: () => this.setState({ schedForm: null }),
+      resultFormOpen: !!st.resultForm, resultForm: st.resultForm ? { ...st.resultForm, hasPreview: st.resultForm.checked && st.resultForm.preview.length > 0, hasErrors: st.resultForm.errors.length > 0, hasWarnings: st.resultForm.warnings.length > 0, saveLabel: st.resultForm.saving ? '저장 중...' : '저장' } : {},
+      cancelResult: () => this.setState({ resultForm: null }),
+      checkResult: () => this.submitResult(false),
+      saveResult: () => { if (!st.resultForm.saving) this.submitResult(true); },
+      clearResult: () => {
+        const f = st.resultForm;
+        if (!confirm('이 경기 기록을 지울까요?')) return;
+        this.db.collection('hw_schedules').doc(f.id).update({ result: firebase.firestore.FieldValue.delete(), updatedAt: Date.now() })
+          .then(() => this.setState({ resultForm: null })).catch(() => alert('지우지 못했어요. 잠시 후 다시 눌러 주세요.'));
+      },
       saveSched: () => { if (!sf.saving) this.saveSchedule(); },
       // 구성원
       memberTotal: sorted.length + '명',

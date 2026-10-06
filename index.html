@@ -196,7 +196,7 @@
         <span style="font-size:13px; font-weight:800; color:{{ mySummary.labelFg }}; flex-shrink:0;">내 포지션</span>
         <span style="font-size:14px; font-weight:700; color:{{ mySummary.fg }};">{{ mySummary.text }}</span>
       </div>
-      <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:6px; margin-top:12px;">
+      <div style="display:grid; grid-template-columns:repeat({{ qCols }}, minmax(0,1fr)); gap:6px; margin-top:12px;">
         <sc-for list="{{ qButtons }}" as="q">
           <div onClick="{{ q.onClick }}" style="position:relative; min-height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:{{ q.bg }}; color:{{ q.fg }}; border:1.5px solid {{ q.bd }};">{{ q.label }}<span style="position:absolute; top:6px; right:7px; width:6px; height:6px; border-radius:50%; background:{{ q.dot }};"></span></div>
         </sc-for>
@@ -265,7 +265,7 @@
         <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:{{ ui.cardPad }};">
           <div style="font-size:13px; font-weight:800; color:#5F5F5F;">{{ myLabel }}</div>
           <div style="font-size:17px; font-weight:800; margin-top:6px; color:{{ mySummary.fg2 }};">{{ mySummary.text }}</div>
-          <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:6px; margin-top:12px;">
+          <div style="display:grid; grid-template-columns:repeat({{ qCols }}, minmax(0,1fr)); gap:6px; margin-top:12px;">
             <sc-for list="{{ myQuarters }}" as="m">
               <div style="border-radius:10px; padding:9px 4px; text-align:center; background:{{ m.bg }}; color:{{ m.fg }};">
                 <div style="font-size:12px; font-weight:700; color:{{ m.sub }};">{{ m.q }}</div>
@@ -276,7 +276,7 @@
         </div>
 
         <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:{{ ui.cardPad }};">
-          <div style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:6px;">
+          <div style="display:grid; grid-template-columns:repeat({{ qCols }}, minmax(0,1fr)); gap:6px;">
             <sc-for list="{{ qButtons }}" as="q">
               <div onClick="{{ q.onClick }}" style="position:relative; min-height:46px; display:flex; align-items:center; justify-content:center; border-radius:10px; cursor:pointer; font-size:15px; font-weight:800; background:{{ q.bg }}; color:{{ q.fg }}; border:1.5px solid {{ q.bd }};">{{ q.label }}<span style="position:absolute; top:6px; right:7px; width:6px; height:6px; border-radius:50%; background:{{ q.dot }};"></span></div>
             </sc-for>
@@ -284,6 +284,7 @@
           <sc-if value="{{ isAdmin }}">
             <div style="margin-top:12px; padding:10px 12px; border-radius:12px; background:#F6F0DC; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
               <span style="flex:1; min-width:180px; font-size:13px; font-weight:700; color:#3D2F08;">{{ editHint }}</span>
+              <span onClick="{{ toggleQn }}" style="min-height:36px; padding:0 12px; display:flex; align-items:center; border-radius:9px; background:#FFFFFF; border:1.5px solid #D8C07A; font-size:13px; font-weight:800; cursor:pointer; color:#3D2F08;">{{ qnLabel }}</span>
               <sc-if value="{{ canCopyPrev }}">
                 <span onClick="{{ copyPrev }}" style="min-height:36px; padding:0 12px; display:flex; align-items:center; border-radius:9px; background:#FFFFFF; border:1.5px solid #D8C07A; font-size:13px; font-weight:800; cursor:pointer; color:#3D2F08;">이전 쿼터 복사</span>
               </sc-if>
@@ -339,7 +340,7 @@
         </sc-if>
         <sc-if value="{{ formationReady }}">
           <div style="margin-top:10px;">
-            <div style="display:grid; grid-template-columns:minmax(0,1fr) repeat(4, 46px) 40px; gap:4px; align-items:center; padding:8px 8px; font-size:12px; font-weight:800; color:#5F5F5F; border-bottom:1px solid #EAEAE6;">
+            <div style="display:grid; grid-template-columns:minmax(0,1fr) repeat({{ qCols }}, {{ qCellW }}) 40px; gap:4px; align-items:center; padding:8px 8px; font-size:12px; font-weight:800; color:#5F5F5F; border-bottom:1px solid #EAEAE6;">
               <span>이름</span>
               <sc-for list="{{ qHeads }}" as="h">
                 <span style="text-align:center; color:{{ h.fg }};">{{ h.label }}</span>
@@ -347,7 +348,7 @@
               <span style="text-align:right;">출전</span>
             </div>
             <sc-for list="{{ lineupRows }}" as="r">
-              <div style="display:grid; grid-template-columns:minmax(0,1fr) repeat(4, 46px) 40px; gap:4px; align-items:center; padding:0 8px; min-height:40px; border-bottom:1px solid #F2F1ED; background:{{ r.bg }}; border-radius:{{ r.radius }};">
+              <div style="display:grid; grid-template-columns:minmax(0,1fr) repeat({{ qCols }}, {{ qCellW }}) 40px; gap:4px; align-items:center; padding:0 8px; min-height:40px; border-bottom:1px solid #F2F1ED; background:{{ r.bg }}; border-radius:{{ r.radius }};">
                 <span style="font-size:14px; font-weight:{{ r.weight }}; color:{{ r.fg }}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.name }}</span>
                 <sc-for list="{{ r.cells }}" as="c">
                   <span style="text-align:center; font-size:{{ c.size }}; font-weight:{{ c.weight }}; color:{{ c.fg }}; background:{{ c.bg }}; border-radius:6px; padding:4px 0;">{{ c.text }}</span>
@@ -399,6 +400,34 @@
         </div>
       </div>
     </sc-if>
+    <sc-if value="{{ resultFormOpen }}">
+      <div style="background:#FFFFFF; border:1.5px solid #D8C07A; border-radius:16px; padding:{{ ui.cardPad }};">
+        <div style="font-size:16px; font-weight:800;">{{ resultForm.title }}</div>
+        <div style="font-size:13px; color:#5F5F5F; margin-top:6px; line-height:1.5;">카톡에 올린 쿼터 기록을 그대로 붙여 넣으세요. 한 줄에 한 쿼터, 왼쪽이 화랑 점수예요.<br>예) 2쿼터 - 1 : 1 (기현) · 2골이면 (준원2) · 여럿이면 (준원, 기현) · 용병 골은 (용병)</div>
+        <textarea id="rf-text" rows="7" value="{{ resultForm.text }}" placeholder="1쿼터 - 0 : 1&#10;2쿼터 - 1 : 1 (기현)" style="display:block; width:100%; margin-top:5px; padding:11px 12px; border-radius:10px; border:1.5px solid #E2E1DC; background:#FFFFFF; font-family:inherit; font-size:15px; color:#141414; outline:none; resize:vertical; line-height:1.5;"></textarea>
+        <sc-if value="{{ resultForm.hasPreview }}">
+          <div style="margin-top:10px; padding:10px 12px; border-radius:10px; background:#F6F6F4; font-size:14px; line-height:1.7;">
+            <sc-for list="{{ resultForm.preview }}" as="l"><div style="white-space:pre;">{{ l }}</div></sc-for>
+            <div style="font-weight:800; margin-top:4px;">{{ resultForm.total }}</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ resultForm.hasErrors }}">
+          <div style="margin-top:8px; font-size:13px; font-weight:700; color:#A3190B; line-height:1.6;"><sc-for list="{{ resultForm.errors }}" as="e"><div>· {{ e }}</div></sc-for></div>
+        </sc-if>
+        <sc-if value="{{ resultForm.hasWarnings }}">
+          <div style="margin-top:8px; font-size:13px; font-weight:700; color:#6E5513; line-height:1.6;"><sc-for list="{{ resultForm.warnings }}" as="w"><div>· {{ w }} (확인만, 저장은 돼요)</div></sc-for></div>
+        </sc-if>
+        <sc-if value="{{ resultForm.error }}">
+          <div style="font-size:13px; font-weight:700; color:#A3190B; margin-top:10px;">{{ resultForm.error }}</div>
+        </sc-if>
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:14px; flex-wrap:wrap;">
+          <sc-if value="{{ resultForm.hasExisting }}"><div onClick="{{ clearResult }}" style="min-height:42px; padding:0 18px; display:flex; align-items:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:#FFFFFF; color:#141414; border:1.5px solid #E2E1DC; color:#A3190B; margin-right:auto;">기록 지우기</div></sc-if>
+          <div onClick="{{ cancelResult }}" style="min-height:42px; padding:0 18px; display:flex; align-items:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:#FFFFFF; color:#141414; border:1.5px solid #E2E1DC;">취소</div>
+          <div onClick="{{ checkResult }}" style="min-height:42px; padding:0 18px; display:flex; align-items:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:#FFFFFF; color:#141414; border:1.5px solid #E2E1DC; border-color:#D8C07A;">읽어 보기</div>
+          <div onClick="{{ saveResult }}" style="min-height:42px; padding:0 18px; display:flex; align-items:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:#141414; color:#FFFFFF; border:1.5px solid #141414;">{{ resultForm.saveLabel }}</div>
+        </div>
+      </div>
+    </sc-if>
     <sc-if value="{{ schedEmpty }}">
       <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:28px 18px; text-align:center; font-size:13px; color:#5F5F5F;">{{ schedEmptyText }}</div>
     </sc-if>
@@ -431,6 +460,25 @@
               <sc-if value="{{ s.open }}">
                 <div style="padding:0 4px 16px; display:flex; flex-direction:column; gap:10px;">
                   <div style="font-size:13px; color:#5F5F5F;">{{ s.address }}</div>
+                  <sc-if value="{{ s.hasResult }}">
+                    <div style="border:1px solid #EAEAE6; border-radius:12px; padding:12px;">
+                      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <span style="font-size:18px; font-weight:800;">{{ s.res.score }}</span>
+                        <span style="font-size:12px; font-weight:800; padding:3px 9px; border-radius:7px; background:{{ s.res.bg }}; color:{{ s.res.fg }};">{{ s.res.label }}</span>
+                      </div>
+                      <div style="display:grid; grid-template-columns:repeat({{ s.res.cols }}, minmax(0,1fr)); gap:4px; margin-top:10px;">
+                        <sc-for list="{{ s.res.qs }}" as="q">
+                          <div style="text-align:center; background:#F6F6F4; border-radius:8px; padding:6px 0;">
+                            <div style="font-size:11px; font-weight:700; color:#6B6B6B;">{{ q.label }}</div>
+                            <div style="font-size:14px; font-weight:800; color:{{ q.fg }};">{{ q.score }}</div>
+                          </div>
+                        </sc-for>
+                      </div>
+                      <sc-if value="{{ s.res.hasScorers }}">
+                        <div style="font-size:13px; margin-top:10px;"><span style="font-weight:800; color:#A3190B;">득점</span> · {{ s.res.scorers }}</div>
+                      </sc-if>
+                    </div>
+                  </sc-if>
                   <div style="display:flex; height:8px; border-radius:4px; overflow:hidden; background:#EFEFEB;">
                     <div style="width:{{ s.barA }}; background:#C71F10;"></div>
                     <div style="width:{{ s.barM }}; background:#D8C07A;"></div>
@@ -451,6 +499,7 @@
                   </sc-if>
                   <sc-if value="{{ s.canEdit }}">
                     <div style="display:flex; gap:16px; justify-content:flex-end; font-size:13px; font-weight:800;">
+                      <sc-if value="{{ s.canRecord }}"><span onClick="{{ s.onRecord }}" style="color:#141414; cursor:pointer; padding:6px 0;">{{ s.recordLabel }}</span></sc-if>
                       <span onClick="{{ s.onEdit }}" style="color:#6E5513; cursor:pointer; padding:6px 0;">일정 수정</span>
                       <span onClick="{{ s.onDelete }}" style="color:#A3190B; cursor:pointer; padding:6px 0;">삭제</span>
                     </div>
