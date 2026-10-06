@@ -8,7 +8,7 @@ except Exception: pass
 TOKEN = sys.argv[1]
 CHANNEL = sys.argv[2] if len(sys.argv) > 2 else 'redesign'
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace('\\', '/') + '/'   # 저장소 폴더
-FILES = ['index.html', 'app.js', 'renderer.js', 'config.js', 'assets/hwarang-logo.svg', '404.html']   # 이것만 올린다(.git, 문서, 예전 파일 제외)
+FILES = ['index.html', 'app.js', 'renderer.js', 'config.js', 'assets/hwarang-logo.svg', 'assets/hwarang-crest.png', '404.html']   # 이것만 올린다(.git, 문서, 예전 파일 제외)
 API = 'https://firebasehosting.googleapis.com/v1beta1/'
 SITE = 'sites/fchwarang'
 def call(method, url, body=None, raw=None, ctype='application/json'):
