@@ -466,14 +466,14 @@
                         <span style="font-size:18px; font-weight:800;">{{ s.res.score }}</span>
                         <span style="font-size:12px; font-weight:800; padding:3px 9px; border-radius:7px; background:{{ s.res.bg }}; color:{{ s.res.fg }};">{{ s.res.label }}</span>
                       </div>
-                      <div style="display:grid; grid-template-columns:repeat({{ s.res.cols }}, minmax(0,1fr)); gap:4px; margin-top:10px;">
+<sc-if value="{{ s.res.hasQs }}">                      <div style="display:grid; grid-template-columns:repeat({{ s.res.cols }}, minmax(0,1fr)); gap:4px; margin-top:10px;">
                         <sc-for list="{{ s.res.qs }}" as="q">
                           <div style="text-align:center; background:#F6F6F4; border-radius:8px; padding:6px 0;">
                             <div style="font-size:11px; font-weight:700; color:#6B6B6B;">{{ q.label }}</div>
                             <div style="font-size:14px; font-weight:800; color:{{ q.fg }};">{{ q.score }}</div>
                           </div>
                         </sc-for>
-                      </div>
+                      </div></sc-if>
                       <sc-if value="{{ s.res.hasScorers }}">
                         <div style="font-size:13px; margin-top:10px;"><span style="font-weight:800; color:#A3190B;">득점</span> · {{ s.res.scorers }}</div>
                       </sc-if>

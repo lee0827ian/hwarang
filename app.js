@@ -28,8 +28,10 @@ const qnOf = s => (s && (s.qn === 6 || (Array.isArray(s.quarters) && s.quarters.
 // ── 카톡 쿼터 기록 읽기 ──
 // 한 줄에 한 쿼터: "2쿼터 - 1 : 1 (기현)", 왼쪽=화랑·오른쪽=상대, 괄호=우리 득점자(2골이면 "준원2", 여럿이면 쉼표).
 // PC 카톡에서 복사할 때 붙는 "[보낸 사람] [오전 7:58]" 같은 앞부분은 무시한다. "용병"=용병 골, "자책골"=상대 자책골.
+// 쿼터별 점수가 없으면 합계 한 줄도 받는다: "2 : 8 (우인, 진호)", "1,2,3,4쿼터 2:8 (우인, 진호)" → total
 function parseQuarterLog(text, members) {
   const qs = [], errors = [], warnings = [];
+  let total = null;
   const given = n => (n.length === 3 ? n.slice(1) : n);
   const resolve = raw => {
     const n = raw.replace(/\s+/g, '');
@@ -40,30 +42,65 @@ function parseQuarterLog(text, members) {
     if (hit.length === 1) return { key: String(hit[0].id), name: hit[0].name };
     return { error: hit.length ? '"' + raw + '" 같은 이름이 ' + hit.length + '명(' + hit.map(m => m.name).join('/') + ') — 성까지 적어 주세요' : '"' + raw + '" 명단에서 못 찾음 — 이름을 확인해 주세요' };
   };
-  for (const line of String(text).split(/\r?\n/)) {
-    const m = /(\d+)\s*쿼터\s*[-–—:]?\s*(\d+)\s*[:：]\s*(\d+)\s*(?:\(([^)]*)\))?/.exec(line);
-    if (!m) continue;
-    const q = Number(m[1]), our = Number(m[2]), their = Number(m[3]);
-    if (q < 1 || q > 8) { errors.push(line.trim() + ' — 쿼터 번호 확인'); continue; }
-    const sc = {}, names = [], before = errors.length;
-    for (const tok of (m[4] || '').split(/[,，、\/]/).map(t => t.trim()).filter(Boolean)) {
+  const scorers = (str, label) => {
+    const sc = {}, names = [];
+    for (const tok of (str || '').split(/[,，、\/]/).map(t => t.trim()).filter(Boolean)) {
       const t = /^(\D+?)\s*(\d+)?\s*(골)?$/.exec(tok);
-      if (!t) { errors.push(q + '쿼터 "' + tok + '" — 읽지 못함'); continue; }
+      if (!t) { errors.push(label + ' "' + tok + '" — 읽지 못함'); continue; }
       const r = resolve(t[1]);
-      if (r.error) { errors.push(q + '쿼터 ' + r.error); continue; }
+      if (r.error) { errors.push(label + ' ' + r.error); continue; }
       const k = Number(t[2] || 1);
       sc[r.key] = (sc[r.key] || 0) + k;
       names.push(r.name + (k > 1 ? ' ' + k : ''));
     }
-    const sum = Object.values(sc).reduce((x, y) => x + y, 0);
-    if (errors.length === before && sum !== our) warnings.push(q + '쿼터 득점자 ' + sum + '골 ≠ 화랑 점수 ' + our);
-    if (qs[q - 1]) warnings.push(q + '쿼터가 두 번 있어요(뒤에 것을 씀)');
-    qs[q - 1] = { our, their, sc, names };
+    return { sc, names };
+  };
+  const sumOf = sc => Object.values(sc).reduce((x, y) => x + y, 0);
+  for (const raw of String(text).split(/\r?\n/)) {
+    const line = raw.replace(/^\s*(\[[^\]]*\]\s*)+/, '');   // PC 카톡 "[보낸 사람] [오전 7:58]"
+    // 합계 줄 다음 줄에 괄호만 따로 쓴 득점자: "3:6" ↵ "(지윤,우인,기현)"
+    const only = /^\s*\(([^)]*)\)\s*$/.exec(line);
+    if (only && total && !total.names.length) {
+      const before = errors.length, { sc, names } = scorers(only[1], '합계');
+      Object.assign(total, { sc, names });
+      const wi = warnings.indexOf('득점자 0골 ≠ 화랑 점수 ' + total.our);   // 합계 줄에서 낸 경고는 거둬들임
+      if (wi >= 0) warnings.splice(wi, 1);
+      if (errors.length === before && sumOf(sc) !== total.our) warnings.push('득점자 ' + sumOf(sc) + '골 ≠ 화랑 점수 ' + total.our);
+      continue;
+    }
+    const multi = /(\d+(?:\s*[,，]\s*\d+)+)\s*쿼터\s*[-–—:]?\s*(\d+)\s*[:：]\s*(\d+)\s*(?:\(([^)]*)\))?/.exec(line);
+    const m = !multi && /(\d+)\s*쿼터\s*[-–—:]?\s*(\d+)\s*[:：]\s*(\d+)\s*(?:\(([^)]*)\))?/.exec(line);
+    const tot = multi || (!m && !/쿼터/.test(line) && /(\d+)\s*[:：]\s*(\d+)\s*(?:\(([^)]*)\))?/.exec(line));
+    if (m) {
+      const q = Number(m[1]), our = Number(m[2]), their = Number(m[3]);
+      if (q < 1 || q > 8) { errors.push(line.trim() + ' — 쿼터 번호 확인'); continue; }
+      const before = errors.length, { sc, names } = scorers(m[4], q + '쿼터');
+      if (errors.length === before && sumOf(sc) !== our) warnings.push(q + '쿼터 득점자 ' + sumOf(sc) + '골 ≠ 화랑 점수 ' + our);
+      if (qs[q - 1]) warnings.push(q + '쿼터가 두 번 있어요(뒤에 것을 씀)');
+      qs[q - 1] = { our, their, sc, names };
+    } else if (tot) {
+      const g = multi ? [null, multi[2], multi[3], multi[4]] : tot;
+      const our = Number(g[1]), their = Number(g[2]);
+      const before = errors.length, { sc, names } = scorers(g[3], '합계');
+      if (errors.length === before && sumOf(sc) !== our) warnings.push('득점자 ' + sumOf(sc) + '골 ≠ 화랑 점수 ' + our);
+      if (total) warnings.push('합계 줄이 두 번 있어요(뒤에 것을 씀)');
+      total = { our, their, sc, names, qn: multi ? multi[1].split(/[,，]/).length : null };
+    }
   }
   const n = qs.length;
   for (let i = 0; i < n; i++) if (!qs[i]) errors.push((i + 1) + '쿼터 기록이 없어요');
-  if (!n) errors.push('"1쿼터 - 0 : 1" 같은 줄을 찾지 못했어요');
-  return { qs, errors, warnings };
+  if (n && total) { warnings.push('쿼터별 기록이 있어서 합계 줄은 쓰지 않아요'); total = null; }
+  if (!n && !total) errors.push('"1쿼터 - 0 : 1" 또는 "2 : 8 (득점자)" 같은 줄을 찾지 못했어요');
+  return { qs, total, errors, warnings };
+}
+// 경기 결과(쿼터별 또는 합계만) — 없으면 null
+const resultOf = s => (s && s.result && Number.isFinite(s.result.our) && Number.isFinite(s.result.their) ? s.result : null);
+// 득점자 합계 { 구성원 id | 'merc' | 'og': 골 }
+function scorersOf(r) {
+  const t = {};
+  (Array.isArray(r.qs) && r.qs.length ? r.qs.map(q => q.sc || {}) : [r.sc || {}])
+    .forEach(sc => Object.entries(sc).forEach(([k, n]) => { t[k] = (t[k] || 0) + n; }));
+  return t;
 }
 window.parseQuarterLog = parseQuarterLog;
 
@@ -343,12 +380,15 @@ class HwarangApp {
     const f = this.state.resultForm;
     const text = el('rf-text') ? el('rf-text').value : f.text;
     const p = parseQuarterLog(text, this.members || []);
-    const preview = p.qs.map((q, i) => (i + 1) + '쿼터  ' + q.our + ' : ' + q.their + (q.names.length ? '  (' + q.names.join(', ') + ')' : ''));
-    const our = p.qs.reduce((x, q) => x + q.our, 0), their = p.qs.reduce((x, q) => x + q.their, 0);
-    const next = { ...f, text, preview, errors: p.errors, warnings: p.warnings, total: p.qs.length ? '합계 ' + our + ' : ' + their + ' (' + (our > their ? '승' : our < their ? '패' : '무') + ')' : '', checked: true };
+    const T = p.total;
+    const preview = T ? ['쿼터별 점수 없이 합계만' + (T.qn ? ' (' + T.qn + '쿼터)' : '') + (T.names.length ? '  (' + T.names.join(', ') + ')' : '')]
+      : p.qs.map((q, i) => (i + 1) + '쿼터  ' + q.our + ' : ' + q.their + (q.names.length ? '  (' + q.names.join(', ') + ')' : ''));
+    const our = T ? T.our : p.qs.reduce((x, q) => x + q.our, 0), their = T ? T.their : p.qs.reduce((x, q) => x + q.their, 0);
+    const next = { ...f, text, preview, errors: p.errors, warnings: p.warnings, total: (p.qs.length || T) ? '합계 ' + our + ' : ' + their + ' (' + (our > their ? '승' : our < their ? '패' : '무') + ')' : '', checked: true };
     if (!save || p.errors.length) { this.setState({ resultForm: { ...next, error: save && p.errors.length ? '빨간 줄을 고친 뒤 다시 저장해 주세요.' : '' } }); return; }
     this.setState({ resultForm: { ...next, saving: true, error: '' } });
-    const result = { qs: p.qs.map(q => ({ our: q.our, their: q.their, sc: q.sc })), our, their, at: Date.now(), by: this.state.me || null };
+    const result = T ? { qs: [], sc: T.sc, qn: T.qn, our, their, at: Date.now(), by: this.state.me || null }
+      : { qs: p.qs.map(q => ({ our: q.our, their: q.their, sc: q.sc })), our, their, at: Date.now(), by: this.state.me || null };
     this.db.collection('hw_schedules').doc(f.id).update({ result, updatedAt: Date.now() })
       .then(() => this.setState({ resultForm: null, schedSel: f.id }))
       .catch(() => this.setState({ resultForm: { ...next, saving: false, error: '저장하지 못했어요. 잠시 후 다시 눌러 주세요.' } }));
@@ -630,10 +670,9 @@ class HwarangApp {
       const apps = open ? navLinks(s) : [];
       const gray = text => ({ chip: text, chipBg: '#F0F0EC', chipFg: '#4F4F4F', chipBd: 'transparent' });
       // 지난 일정: 출석 기록이 하나도 없으면 "기록 없음", 있으면 내 출석 여부(이름을 안 골랐으면 참석 인원)
-      const res = s.result && Array.isArray(s.result.qs) && s.result.qs.length ? s.result : null;
+      const res = resultOf(s), resQs = res && Array.isArray(res.qs) ? res.qs : [];
       const resLabel = res ? (res.our > res.their ? '승' : res.our < res.their ? '패' : '무') : '';
-      const scorerTotals = {};
-      if (res) res.qs.forEach(q => Object.entries(q.sc || {}).forEach(([k, n]) => { scorerTotals[k] = (scorerTotals[k] || 0) + n; }));
+      const scorerTotals = res ? scorersOf(res) : {};
       const scorerName = k => (k === 'merc' ? '용병' : k === 'og' ? '상대 자책골' : (byId[k] ? byId[k].name : '?'));
       const pastChip = !a ? gray('기록 없음') : !me ? gray('참석 ' + a) : mine === 'attend' ? { chip: '출석', chipBg: '#141414', chipFg: '#FFFFFF', chipBd: 'transparent' } : gray('결석');
       return {
@@ -645,13 +684,15 @@ class HwarangApp {
         res: res ? {
           score: '화랑 ' + res.our + ' : ' + res.their + (s.opponent ? ' ' + s.opponent : ''), label: resLabel,
           bg: resLabel === '승' ? '#C71F10' : resLabel === '패' ? '#6B6B66' : '#D8C07A', fg: resLabel === '무' ? '#3D2F08' : '#FFFFFF',
-          cols: res.qs.length, qs: res.qs.map((q, i) => ({ label: (i + 1) + 'Q', score: q.our + ':' + q.their, fg: q.our > q.their ? '#A3190B' : '#141414' })),
+          hasQs: resQs.length > 0, cols: resQs.length || 1, qs: resQs.map((q, i) => ({ label: (i + 1) + 'Q', score: q.our + ':' + q.their, fg: q.our > q.their ? '#A3190B' : '#141414' })),
           scorers: Object.entries(scorerTotals).sort((x, y) => y[1] - x[1]).map(([k, n]) => scorerName(k) + (n > 1 ? ' ' + n : '')).join(' · '),
           hasScorers: Object.keys(scorerTotals).length > 0
         } : {},
         canRecord: isAdmin && s.date <= today, recordLabel: res ? '경기 기록 수정' : '경기 기록 입력',
         onRecord: () => {
-          const txt = res ? res.qs.map((q, i) => (i + 1) + '쿼터 - ' + q.our + ' : ' + q.their + (Object.keys(q.sc || {}).length ? ' (' + Object.entries(q.sc).map(([k, n]) => (k === 'merc' ? '용병' : k === 'og' ? '자책골' : (byId[k] ? byId[k].name : '?')) + (n > 1 ? n : '')).join(', ') + ')' : '')).join('\n') : '';
+          const nm = k => (k === 'merc' ? '용병' : k === 'og' ? '자책골' : (byId[k] ? byId[k].name : '?'));
+          const scTxt = sc => (Object.keys(sc || {}).length ? ' (' + Object.entries(sc).map(([k, n]) => nm(k) + (n > 1 ? n : '')).join(', ') + ')' : '');
+          const txt = res && !resQs.length ? (res.qn ? range(res.qn).map(i => i + 1).join(',') + '쿼터 ' : '합계 ') + res.our + ' : ' + res.their + scTxt(res.sc) : res ? res.qs.map((q, i) => (i + 1) + '쿼터 - ' + q.our + ' : ' + q.their + (Object.keys(q.sc || {}).length ? ' (' + Object.entries(q.sc).map(([k, n]) => (k === 'merc' ? '용병' : k === 'og' ? '자책골' : (byId[k] ? byId[k].name : '?')) + (n > 1 ? n : '')).join(', ') + ')' : '')).join('\n') : '';
           this.setState({ resultForm: { id: s.id, title: p.md + ' ' + (s.opponent ? 'vs ' + s.opponent : s.venue || '') + ' 경기 기록', text: txt, hasExisting: !!res, preview: [], errors: [], warnings: [], total: '', error: '', checked: false } });
           window.scrollTo(0, 0);
         },
@@ -681,8 +722,8 @@ class HwarangApp {
     const seasonPast = pastAll.filter(s => s.date.slice(0, 4) === year && tally(s).attend.length > 0);
     // 시즌 골: 올해 경기 기록(result)의 득점자 합계
     const seasonGoals = {};
-    schedules.filter(s => s.date.slice(0, 4) === year && s.result && Array.isArray(s.result.qs))
-      .forEach(s => s.result.qs.forEach(q => Object.entries(q.sc || {}).forEach(([k, n]) => { seasonGoals[k] = (seasonGoals[k] || 0) + n; })));
+    schedules.filter(s => s.date.slice(0, 4) === year && resultOf(s))
+      .forEach(s => Object.entries(scorersOf(s.result)).forEach(([k, n]) => { seasonGoals[k] = (seasonGoals[k] || 0) + n; }));
     const counts = { all: sorted.length, GK: 0, DF: 0, MF: 0, FW: 0 };
     sorted.forEach(m => { if (counts[m.pos] != null) counts[m.pos]++; });
     const posFilters = [['all', '전체'], ['GK', 'GK'], ['DF', 'DF'], ['MF', 'MF'], ['FW', 'FW']].map(([k, l]) => {
@@ -706,7 +747,7 @@ class HwarangApp {
     const mf = st.memberForm;
 
     // ── 기록 탭: 시즌별 결과·득점·출석(출석은 참석 응답이 있는 지난 경기만, 득점은 경기 기록이 있는 경기만) ──
-    const hasRes = s => !!(s.result && Array.isArray(s.result.qs) && s.result.qs.length);
+    const hasRes = s => !!resultOf(s);
     const recYears = [...new Set(pastAll.filter(s => hasRes(s) || tally(s).attend.length).map(s => s.date.slice(0, 4)))].sort().reverse();
     const recYear = st.recYear && recYears.includes(st.recYear) ? st.recYear : (recYears[0] || year);
     const recGames = pastAll.filter(s => s.date.slice(0, 4) === recYear && (hasRes(s) || tally(s).attend.length));
@@ -714,7 +755,7 @@ class HwarangApp {
     const wdl = { w: 0, d: 0, l: 0 }; let gf = 0, ga = 0;
     played.forEach(s => { gf += s.result.our; ga += s.result.their; wdl[s.result.our > s.result.their ? 'w' : s.result.our < s.result.their ? 'l' : 'd']++; });
     const goals = {}, att = {};
-    played.forEach(s => s.result.qs.forEach(q => Object.entries(q.sc || {}).forEach(([k, n]) => { goals[k] = (goals[k] || 0) + n; })));
+    played.forEach(s => Object.entries(scorersOf(s.result)).forEach(([k, n]) => { goals[k] = (goals[k] || 0) + n; }));
     attGames.forEach(s => tally(s).attend.forEach(m => { att[m.id] = (att[m.id] || 0) + 1; }));
     const avgAtt = attGames.length ? (attGames.reduce((x, s) => x + tally(s).attend.length + guestsOf(s).length, 0) / attGames.length).toFixed(1) : '-';
     const rankRows = (entries, fmt) => {
@@ -729,8 +770,7 @@ class HwarangApp {
     const recGameRows = recGames.map(s => {
       const p = dateParts(s), r = hasRes(s) ? s.result : null, t = tally(s), gs = guestsOf(s), open = st.recOpen === s.id;
       const lab = r ? (r.our > r.their ? '승' : r.our < r.their ? '패' : '무') : '';
-      const sc = {};
-      if (r) r.qs.forEach(q => Object.entries(q.sc || {}).forEach(([k, n]) => { sc[k] = (sc[k] || 0) + n; }));
+      const sc = r ? scorersOf(r) : {}, rq = r && Array.isArray(r.qs) ? r.qs : [];
       const scName = k => (k === 'merc' ? '용병' : k === 'og' ? '상대 자책골' : (byId[k] ? byId[k].name : '?'));
       return {
         date: p.md, dow: p.dow, title: matchLabel(s) || s.venue || '', venue: s.venue || '',
@@ -738,7 +778,7 @@ class HwarangApp {
         lbg: lab === '승' ? '#C71F10' : lab === '패' ? '#6B6B66' : '#D8C07A', lfg: lab === '무' ? '#3D2F08' : '#FFFFFF', scoreFg: r ? '#141414' : '#8A8A85',
         meta: '참석 ' + (t.attend.length + gs.length) + '명' + (Object.keys(sc).length ? ' · 득점 ' + Object.entries(sc).sort((a, b) => b[1] - a[1]).map(([k, n]) => scName(k) + (n > 1 ? ' ' + n : '')).join(', ') : ''),
         open, onClick: () => this.setState({ recOpen: open ? null : s.id }),
-        hasQs: !!r, qCols: r ? r.qs.length : 1, qs: r ? r.qs.map((q, i) => ({ label: (i + 1) + 'Q', score: q.our + ':' + q.their, fg: q.our > q.their ? '#A3190B' : '#141414' })) : [],
+        hasQs: rq.length > 0, qCols: rq.length || 1, qs: rq.length ? rq.map((q, i) => ({ label: (i + 1) + 'Q', score: q.our + ':' + q.their, fg: q.our > q.their ? '#A3190B' : '#141414' })) : [],
         attendees: meFirst(t.attend).map(m => ({ name: m.name, bg: m === me ? '#141414' : '#FBE9E6', fg: m === me ? '#FFFFFF' : '#A3190B' })).concat(gs.map(x => ({ name: x.name + ' · 용병', bg: '#F6F0DC', fg: '#6E5513' }))),
         noAttend: !t.attend.length && !gs.length
       };
