@@ -559,7 +559,7 @@ class HwarangApp {
     // 용병 이름표. 데려온 사람과 운영진에게는 ×가 붙고, 누르면 뺄 수 있다
     const guestChip = x => {
       const mine = isAdmin || x.by === meId;
-      return { name: x.name + ' · 용병' + (mine ? ' ×' : ''), bg: '#F6F0DC', fg: '#6E5513', weight: 700, bd: 'transparent', cursor: mine ? 'pointer' : 'default',
+      return { name: (/^용병/.test(x.name) ? x.name : x.name + ' · 용병') + (mine ? ' ×' : ''), bg: '#F6F0DC', fg: '#6E5513', weight: 700, bd: 'transparent', cursor: mine ? 'pointer' : 'default',
         onClick: mine ? () => { if (confirm('용병 ' + x.name + ' 님을 뺄까요?')) this.removeGuest(next, x.id); } : undefined };
     };
     const meFirst = list => [...list].sort((a, b) => (b === me) - (a === me));
@@ -792,7 +792,7 @@ class HwarangApp {
         meta: (t.attend.length + gs.length ? '참석 ' + (t.attend.length + gs.length) + '명' : '참석 기록 없음') + (Object.keys(sc).length ? ' · 득점 ' + Object.entries(sc).sort((a, b) => b[1] - a[1]).map(([k, n]) => scName(k) + (n > 1 ? ' ' + n : '')).join(', ') : ''),
         open, onClick: () => this.setState({ recOpen: open ? null : s.id }),
         hasQs: rq.length > 0, qCols: rq.length || 1, qs: rq.length ? rq.map((q, i) => ({ label: (i + 1) + 'Q', score: q.our + ':' + q.their, fg: q.our > q.their ? '#A3190B' : '#141414' })) : [],
-        attendees: meFirst(t.attend).map(m => ({ name: m.name, bg: m === me ? '#141414' : '#FBE9E6', fg: m === me ? '#FFFFFF' : '#A3190B' })).concat(gs.map(x => ({ name: x.name + ' · 용병', bg: '#F6F0DC', fg: '#6E5513' }))),
+        attendees: meFirst(t.attend).map(m => ({ name: m.name, bg: m === me ? '#141414' : '#FBE9E6', fg: m === me ? '#FFFFFF' : '#A3190B' })).concat(gs.map(x => ({ name: /^용병/.test(x.name) ? x.name : x.name + ' · 용병', bg: '#F6F0DC', fg: '#6E5513' }))),
         noAttend: !t.attend.length && !gs.length
       };
     });
