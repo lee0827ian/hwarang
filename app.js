@@ -788,6 +788,8 @@ class HwarangApp {
       return {
         date: p.md, dow: p.dow, title: matchLabel(s) || s.venue || '', venue: s.venue || '',
         score: r ? r.our + ' : ' + r.their : '기록 없음', label: lab, hasLabel: !!lab,
+        // 왼쪽 결과 색 줄: 승 연두 · 패 빨강 · 무 금색 · 기록 없음은 줄 없음
+        stripe: lab === '승' ? '#6CC04A' : lab === '패' ? '#E0453A' : lab === '무' ? '#D8C07A' : 'transparent',
         lbg: lab === '승' ? '#C71F10' : lab === '패' ? '#6B6B66' : '#D8C07A', lfg: lab === '무' ? '#3D2F08' : '#FFFFFF', scoreFg: r ? '#141414' : '#8A8A85',
         meta: (t.attend.length + gs.length ? '참석 ' + (t.attend.length + gs.length) + '명' : '참석 기록 없음') + (Object.keys(sc).length ? ' · 득점 ' + Object.entries(sc).sort((a, b) => b[1] - a[1]).map(([k, n]) => scName(k) + (n > 1 ? ' ' + n : '')).join(', ') : ''),
         open, onClick: () => this.setState({ recOpen: open ? null : s.id }),
@@ -825,7 +827,7 @@ class HwarangApp {
       saveGuest: () => this.addGuest(next),
       onGuestKey: e => { if (e.key === 'Enter') this.addGuest(next); },
       upcoming, upcomingEmpty: !upcoming.length,
-      goFormation: go('formation'), goSchedule: go('schedule'),
+      goFormation: go('formation'), goSchedule: go('schedule'), goHome: go('home'),
       // 포메이션
       mySummary, myQuarters, myLabel: me ? me.name + '님 포지션' : '내 포지션', qButtons, pitchSlots, qInfo, qHeads, lineupRows,
       formationEmpty: !fmReadyData, formationReady: fmReadyData,

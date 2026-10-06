@@ -29,8 +29,8 @@
   <div data-screen-label="헤더" style="position:sticky; top:0; z-index:100; background:#FFFFFF; border-bottom:1px solid #EAEAE6;">
     <div style="max-width:1120px; margin:0 auto; padding:{{ ui.headPad }}; display:flex; align-items:center; gap:24px;">
       <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
-        <img src="assets/hwarang-crest.png" alt="화랑 FC" style="width:{{ ui.logo }}; height:{{ ui.logo }}; display:block;">
-        <div>
+        <img src="assets/hwarang-crest.png" alt="화랑 FC" onClick="{{ goHome }}" style="width:{{ ui.logo }}; height:{{ ui.logo }}; display:block; cursor:pointer;">
+        <div onClick="{{ goHome }}" style="cursor:pointer;">
           <div style="font-size:{{ ui.title }}; font-weight:800; letter-spacing:-.3px; line-height:1.15;">화랑 FC</div>
           <div style="font-size:12px; color:#8A6D1F; font-weight:700; letter-spacing:.4px;">since 2010</div>
         </div>
@@ -630,7 +630,7 @@
       <div style="font-size:16px; font-weight:800;">경기별 기록</div>
       <sc-if value="{{ recGamesEmpty }}"><div style="font-size:13px; color:#5F5F5F; padding:14px 0 4px;">아직 기록이 있는 경기가 없어요.</div></sc-if>
       <sc-for list="{{ recGameRows }}" as="g">
-        <div style="border-top:1px solid #F0EFEB; margin-top:8px;">
+        <div style="border-top:1px solid #F0EFEB; margin-top:8px; border-left:4px solid {{ g.stripe }}; padding-left:6px;">
           <div onClick="{{ g.onClick }}" style="display:grid; grid-template-columns:52px minmax(0,1fr) auto; gap:12px; align-items:center; padding:12px 4px; cursor:pointer;">
             <div><div style="font-size:18px; font-weight:800; letter-spacing:-.5px;">{{ g.date }}</div><div style="font-size:12px; font-weight:700; color:#5F5F5F;">{{ g.dow }}요일</div></div>
             <div style="min-width:0;">
