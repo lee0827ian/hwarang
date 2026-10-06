@@ -27,7 +27,9 @@ const qnOf = s => (s && (s.qn === 6 || (Array.isArray(s.quarters) && s.quarters.
 
 // ── 카톡 쿼터 기록 읽기 ──
 // 한 줄에 한 쿼터: "2쿼터 - 1 : 1 (기현)", 왼쪽=화랑·오른쪽=상대, 괄호=우리 득점자(2골이면 "준원2", 여럿이면 쉼표).
-// PC 카톡에서 복사할 때 붙는 "[보낸 사람] [오전 7:58]" 같은 앞부분은 무시한다. "용병"=용병 골, "자책골"=상대 자책골.
+// PC 카톡에서 복사할 때 붙는 "[보낸 사람] [오전 7:58]" 같은 앞부분은 무시한다.
+// "용병·지인·지인분"=용병 골, "자책골·OG"=상대 자책골, "미상"=득점자 모름. 점수는 "4 : 0"과 "4대0" 둘 다, 이름은 쉼표나 띄어쓰기로 구분.
+// "현재"가 들어간 줄(경기 중 중간 보고)은 건너뛴다.
 // 쿼터별 점수가 없으면 합계 한 줄도 받는다: "2 : 8 (우인, 진호)", "1,2,3,4쿼터 2:8 (우인, 진호)" → total
 function parseQuarterLog(text, members) {
   const qs = [], errors = [], warnings = [];
@@ -35,8 +37,9 @@ function parseQuarterLog(text, members) {
   const given = n => (n.length === 3 ? n.slice(1) : n);
   const resolve = raw => {
     const n = raw.replace(/\s+/g, '');
-    if (n === '용병') return { key: 'merc', name: '용병' };
-    if (/^(상대)?(자책|자책골|자살골)$/.test(n)) return { key: 'og', name: '자책골' };
+    if (/^(용병|지인|지인분|게스트)$/.test(n)) return { key: 'merc', name: '용병' };
+    if (/^(상대)?(자책|자책골|자살골)$/i.test(n) || /^og$/i.test(n)) return { key: 'og', name: '자책골' };
+    if (/^(미상|모름|\?)$/.test(n)) return { key: 'unk', name: '미상' };
     let hit = members.filter(m => m.name.replace(/\s+/g, '') === n);
     if (!hit.length) hit = members.filter(m => given(m.name.replace(/\s+/g, '')) === n);
     if (hit.length === 1) return { key: String(hit[0].id), name: hit[0].name };
@@ -44,14 +47,23 @@ function parseQuarterLog(text, members) {
   };
   const scorers = (str, label) => {
     const sc = {}, names = [];
-    for (const tok of (str || '').split(/[,，、\/]/).map(t => t.trim()).filter(Boolean)) {
+    const one = tok => {
       const t = /^(\D+?)\s*(\d+)?\s*(골)?$/.exec(tok);
-      if (!t) { errors.push(label + ' "' + tok + '" — 읽지 못함'); continue; }
-      const r = resolve(t[1]);
-      if (r.error) { errors.push(label + ' ' + r.error); continue; }
-      const k = Number(t[2] || 1);
-      sc[r.key] = (sc[r.key] || 0) + k;
-      names.push(r.name + (k > 1 ? ' ' + k : ''));
+      const r = t ? resolve(t[1]) : { error: '"' + tok + '" — 읽지 못함' };
+      return r.error ? r : { ...r, n: Number(t[2] || 1) };
+    };
+    for (const tok of (str || '').split(/[,，、\/]/).map(t => t.trim()).filter(Boolean)) {
+      let parts = [one(tok)];
+      // "동민 도현 경호2"처럼 띄어쓰기로만 나눈 경우
+      if (parts[0].error && /\s/.test(tok)) {
+        const split = tok.split(/\s+/).map(one);
+        if (split.every(x => !x.error)) parts = split;
+      }
+      for (const r of parts) {
+        if (r.error) { errors.push(label + ' ' + r.error); continue; }
+        sc[r.key] = (sc[r.key] || 0) + r.n;
+        names.push(r.name + (r.n > 1 ? ' ' + r.n : ''));
+      }
     }
     return { sc, names };
   };
@@ -68,9 +80,10 @@ function parseQuarterLog(text, members) {
       if (errors.length === before && sumOf(sc) !== total.our) warnings.push('득점자 ' + sumOf(sc) + '골 ≠ 화랑 점수 ' + total.our);
       continue;
     }
-    const multi = /(\d+(?:\s*[,，]\s*\d+)+)\s*쿼터\s*[-–—:]?\s*(\d+)\s*[:：]\s*(\d+)\s*(?:\(([^)]*)\))?/.exec(line);
-    const m = !multi && /(\d+)\s*쿼터\s*[-–—:]?\s*(\d+)\s*[:：]\s*(\d+)\s*(?:\(([^)]*)\))?/.exec(line);
-    const tot = multi || (!m && !/쿼터/.test(line) && /(\d+)\s*[:：]\s*(\d+)\s*(?:\(([^)]*)\))?/.exec(line));
+    if (/현재/.test(line)) continue;
+    const multi = /(\d+(?:\s*[,，]\s*\d+)+)\s*쿼터\s*[-–—:]?\s*(\d+)\s*(?:[:：]|대)\s*(\d+)\s*(?:\(([^)]*)\))?/.exec(line);
+    const m = !multi && /(\d+)\s*쿼터\s*[-–—:]?\s*(\d+)\s*(?:[:：]|대)\s*(\d+)\s*(?:\(([^)]*)\))?/.exec(line);
+    const tot = multi || (!m && !/쿼터/.test(line) && /(\d+)\s*(?:[:：]|대)\s*(\d+)\s*(?:\(([^)]*)\))?/.exec(line));
     if (m) {
       const q = Number(m[1]), our = Number(m[2]), their = Number(m[3]);
       if (q < 1 || q > 8) { errors.push(line.trim() + ' — 쿼터 번호 확인'); continue; }
@@ -673,7 +686,7 @@ class HwarangApp {
       const res = resultOf(s), resQs = res && Array.isArray(res.qs) ? res.qs : [];
       const resLabel = res ? (res.our > res.their ? '승' : res.our < res.their ? '패' : '무') : '';
       const scorerTotals = res ? scorersOf(res) : {};
-      const scorerName = k => (k === 'merc' ? '용병' : k === 'og' ? '상대 자책골' : (byId[k] ? byId[k].name : '?'));
+      const scorerName = k => (k === 'merc' ? '용병' : k === 'og' ? '상대 자책골' : k === 'unk' ? '득점자 미상' : (byId[k] ? byId[k].name : '?'));
       const pastChip = !a ? gray('기록 없음') : !me ? gray('참석 ' + a) : mine === 'attend' ? { chip: '출석', chipBg: '#141414', chipFg: '#FFFFFF', chipBd: 'transparent' } : gray('결석');
       return {
         ...(isPast ? pastChip : chipFor(mine)),
@@ -690,9 +703,9 @@ class HwarangApp {
         } : {},
         canRecord: isAdmin && s.date <= today, recordLabel: res ? '경기 기록 수정' : '경기 기록 입력',
         onRecord: () => {
-          const nm = k => (k === 'merc' ? '용병' : k === 'og' ? '자책골' : (byId[k] ? byId[k].name : '?'));
+          const nm = k => (k === 'merc' ? '용병' : k === 'og' ? '자책골' : k === 'unk' ? '미상' : (byId[k] ? byId[k].name : '?'));
           const scTxt = sc => (Object.keys(sc || {}).length ? ' (' + Object.entries(sc).map(([k, n]) => nm(k) + (n > 1 ? n : '')).join(', ') + ')' : '');
-          const txt = res && !resQs.length ? (res.qn ? range(res.qn).map(i => i + 1).join(',') + '쿼터 ' : '합계 ') + res.our + ' : ' + res.their + scTxt(res.sc) : res ? res.qs.map((q, i) => (i + 1) + '쿼터 - ' + q.our + ' : ' + q.their + (Object.keys(q.sc || {}).length ? ' (' + Object.entries(q.sc).map(([k, n]) => (k === 'merc' ? '용병' : k === 'og' ? '자책골' : (byId[k] ? byId[k].name : '?')) + (n > 1 ? n : '')).join(', ') + ')' : '')).join('\n') : '';
+          const txt = res && !resQs.length ? (res.qn ? range(res.qn).map(i => i + 1).join(',') + '쿼터 ' : '합계 ') + res.our + ' : ' + res.their + scTxt(res.sc) : res ? res.qs.map((q, i) => (i + 1) + '쿼터 - ' + q.our + ' : ' + q.their + (Object.keys(q.sc || {}).length ? ' (' + Object.entries(q.sc).map(([k, n]) => nm(k) + (n > 1 ? n : '')).join(', ') + ')' : '')).join('\n') : '';
           this.setState({ resultForm: { id: s.id, title: p.md + ' ' + (s.opponent ? 'vs ' + s.opponent : s.venue || '') + ' 경기 기록', text: txt, hasExisting: !!res, preview: [], errors: [], warnings: [], total: '', error: '', checked: false } });
           window.scrollTo(0, 0);
         },
@@ -771,7 +784,7 @@ class HwarangApp {
       const p = dateParts(s), r = hasRes(s) ? s.result : null, t = tally(s), gs = guestsOf(s), open = st.recOpen === s.id;
       const lab = r ? (r.our > r.their ? '승' : r.our < r.their ? '패' : '무') : '';
       const sc = r ? scorersOf(r) : {}, rq = r && Array.isArray(r.qs) ? r.qs : [];
-      const scName = k => (k === 'merc' ? '용병' : k === 'og' ? '상대 자책골' : (byId[k] ? byId[k].name : '?'));
+      const scName = k => (k === 'merc' ? '용병' : k === 'og' ? '상대 자책골' : k === 'unk' ? '득점자 미상' : (byId[k] ? byId[k].name : '?'));
       return {
         date: p.md, dow: p.dow, title: matchLabel(s) || s.venue || '', venue: s.venue || '',
         score: r ? r.our + ' : ' + r.their : '기록 없음', label: lab, hasLabel: !!lab,
@@ -783,7 +796,7 @@ class HwarangApp {
         noAttend: !t.attend.length && !gs.length
       };
     });
-    const extraGoals = [goals.merc ? '용병 ' + goals.merc + '골' : '', goals.og ? '상대 자책골 ' + goals.og : ''].filter(Boolean).join(' · ');
+    const extraGoals = [goals.merc ? '용병 ' + goals.merc + '골' : '', goals.og ? '상대 자책골 ' + goals.og : '', goals.unk ? '득점자 미상 ' + goals.unk + '골' : ''].filter(Boolean).join(' · ');
 
     return {
       ui, tabs,
