@@ -776,7 +776,7 @@ class HwarangApp {
         date: p.md, dow: p.dow, title: matchLabel(s) || s.venue || '', venue: s.venue || '',
         score: r ? r.our + ' : ' + r.their : '기록 없음', label: lab, hasLabel: !!lab,
         lbg: lab === '승' ? '#C71F10' : lab === '패' ? '#6B6B66' : '#D8C07A', lfg: lab === '무' ? '#3D2F08' : '#FFFFFF', scoreFg: r ? '#141414' : '#8A8A85',
-        meta: '참석 ' + (t.attend.length + gs.length) + '명' + (Object.keys(sc).length ? ' · 득점 ' + Object.entries(sc).sort((a, b) => b[1] - a[1]).map(([k, n]) => scName(k) + (n > 1 ? ' ' + n : '')).join(', ') : ''),
+        meta: (t.attend.length + gs.length ? '참석 ' + (t.attend.length + gs.length) + '명' : '참석 기록 없음') + (Object.keys(sc).length ? ' · 득점 ' + Object.entries(sc).sort((a, b) => b[1] - a[1]).map(([k, n]) => scName(k) + (n > 1 ? ' ' + n : '')).join(', ') : ''),
         open, onClick: () => this.setState({ recOpen: open ? null : s.id }),
         hasQs: rq.length > 0, qCols: rq.length || 1, qs: rq.length ? rq.map((q, i) => ({ label: (i + 1) + 'Q', score: q.our + ':' + q.their, fg: q.our > q.their ? '#A3190B' : '#141414' })) : [],
         attendees: meFirst(t.attend).map(m => ({ name: m.name, bg: m === me ? '#141414' : '#FBE9E6', fg: m === me ? '#FFFFFF' : '#A3190B' })).concat(gs.map(x => ({ name: x.name + ' · 용병', bg: '#F6F0DC', fg: '#6E5513' }))),
