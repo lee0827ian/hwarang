@@ -510,8 +510,13 @@ class HwarangApp {
       return { md: (d.getMonth() + 1) + '.' + d.getDate(), dow: DOW[d.getDay()], month: (d.getMonth() + 1) + '월' };
     };
     const ddayOf = s => { const n = Math.round((new Date(s.date + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000); return n <= 0 ? 'D-DAY' : 'D-' + n; };
-    // 상대가 없으면 자체 경기. 구장도 정해지지 않은 일정은 아무것도 붙이지 않는다
-    const matchLabel = s => (s.opponent ? 'vs ' + s.opponent : s.venue === '미정' ? '' : '자체 경기');
+    // 상대 표시: 상대 칸에 '자체전'이면 자체전, 비었거나 '미정'이면 지난 경기는 '상대 미기록'·다가오는 경기는 '상대 미정'
+    const matchLabel = s => {
+      const o = (s.opponent || '').trim();
+      if (/^자체\s*(전|경기)$/.test(o)) return '자체전';
+      if (o && o !== '미정') return 'vs ' + o;
+      return s.date < today ? '상대 미기록' : '상대 미정';
+    };
 
     // 탭
     const go = k => () => { this.setState({ tab: k }); window.scrollTo(0, 0); };
