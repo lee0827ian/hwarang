@@ -235,7 +235,7 @@ class HwarangApp {
       draft: null, draftFor: null, sel: null, dirty: false, savedAt: 0, fmError: '',
       schedView: 'upcoming', schedSel: undefined, schedForm: null, resultForm: null,
       memberPos: 'all', memberForm: null,
-      recYear: null, recOpen: null, recAllAtt: false,
+      recYear: null, recOpen: null, recAllAtt: false, recAllGoals: false,
       isMobile: window.innerWidth < MOBILE_WIDTH
     };
   }
@@ -878,9 +878,11 @@ class HwarangApp {
         { title: '실점', value: ga, sub: played.length ? '경기당 ' + (ga / played.length).toFixed(1) : '-' },
         { title: '평균 참석', value: avgAtt, sub: '용병 포함' }
       ],
-      scorerList, scorerEmpty: !scorerList.length, extraGoals, hasExtraGoals: !!extraGoals,
-      attList: st.recAllAtt ? attAll : attAll.slice(0, 10), attEmpty: !attAll.length,
-      attMore: attAll.length > 10, attMoreLabel: st.recAllAtt ? '접기' : '전체 ' + attAll.length + '명 보기', toggleAttMore: () => this.setState({ recAllAtt: !st.recAllAtt }),
+      // 득점·출석 순위는 TOP5만 보이고 '전체 보기'로 펼친다
+      scorerList: st.recAllGoals ? scorerList : scorerList.slice(0, 5), scorerEmpty: !scorerList.length, extraGoals, hasExtraGoals: !!extraGoals,
+      goalMore: scorerList.length > 5, goalMoreLabel: st.recAllGoals ? '접기' : '전체 ' + scorerList.length + '명 보기', toggleGoalMore: () => this.setState({ recAllGoals: !st.recAllGoals }),
+      attList: st.recAllAtt ? attAll : attAll.slice(0, 5), attEmpty: !attAll.length,
+      attMore: attAll.length > 5, attMoreLabel: st.recAllAtt ? '접기' : '전체 ' + attAll.length + '명 보기', toggleAttMore: () => this.setState({ recAllAtt: !st.recAllAtt }),
       recGameRows, recGamesEmpty: !recGameRows.length,
       // 구성원
       memberTotal: sorted.length + '명',
