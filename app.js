@@ -431,6 +431,12 @@ class HwarangApp {
       : this.members.concat([{ id: this.members.reduce((mx, m) => Math.max(mx, m.id), 0) + 1, name, pos, admin }]);
     this.writeRoster(members, fail);
   }
+  // 구성원 탭 포지션 칸에서 바로 바꾼다(누구나)
+  setPos(id, pos) {
+    const cur = this.members.find(m => m.id === id);
+    if (!cur || cur.pos === pos) return;
+    this.writeRoster(this.members.map(m => (m.id === id ? { ...m, pos } : m)), () => alert('포지션을 바꾸지 못했어요. 잠시 후 다시 해 주세요.'));
+  }
   writeRoster(members, fail) {
     this.db.collection('hw_team').doc('roster').set({ members, updatedAt: Date.now() })
       .then(() => this.setState({ memberForm: null }))
@@ -754,11 +760,12 @@ class HwarangApp {
       const isMe = m === me, att = seasonPast.filter(s => statusOf(s, m.id) === 'attend').length;
       const rate = seasonPast.length ? Math.round(att / seasonPast.length * 100) + '%' : '0%';
       const s = statusOf(next, m.id);
-      return { name: (isMe ? m.name + ' (나)' : m.name) + (m.admin ? ' · 운영진' : ''), key: keyOf(m), pos: m.pos || '-',
+      return { name: isMe ? m.name + ' (나)' : m.name, key: keyOf(m), pos: m.pos || '-',
         sub: [next ? '이번 경기 ' + (s ? LABEL[s] : '미응답') : '', seasonPast.length ? '참석 ' + att + '/' + seasonPast.length : '', seasonGoals[m.id] ? year + ' 시즌 ' + seasonGoals[m.id] + '골' : ''].filter(Boolean).join(' · '),
         rate, display: !mq || keyOf(m).includes(mq) ? 'grid' : 'none',
         weight: isMe ? 800 : 700, fg: isMe ? '#A3190B' : '#141414', bg: isMe ? '#FBE9E6' : 'transparent', radius: isMe ? '10px' : '0',
-        posBg: m.pos === 'GK' ? '#F6F0DC' : '#F3F3F0', posFg: m.pos === 'GK' ? '#6E5513' : '#141414', barFg: seasonPast.length && att / seasonPast.length >= 0.7 ? '#C71F10' : '#A8A8A2',
+        posBg: m.pos === 'GK' ? '#F6F0DC' : '#F3F3F0', posFg: m.pos === 'GK' ? '#6E5513' : '#141414', posLine: m.pos === 'GK' ? '#D8C07A' : '#DDDCD6',
+        onPos: e => this.setPos(m.id, e.target.value), barFg: seasonPast.length && att / seasonPast.length >= 0.7 ? '#C71F10' : '#A8A8A2',
         cursor: isAdmin ? 'pointer' : 'default',
         onClick: () => { if (isAdmin) { this.setState({ memberForm: { id: m.id, title: m.name + ' 수정', name: m.name, pos: m.pos || 'MF', role: m.admin ? 'admin' : 'member', canDelete: true, error: '' } }); window.scrollTo(0, 0); } } };
     });
@@ -803,6 +810,20 @@ class HwarangApp {
         noAttend: !t.attend.length && !gs.length
       };
     });
+    // 홈 '최근 경기 기록': 경기 기록이 있는 지난 경기 최근 3개, 누르면 기록 탭에서 그 경기를 펼친다
+    const recentGames = pastAll.filter(hasRes).slice(0, 3).map((s, i) => {
+      const p = dateParts(s), r = s.result, sc = scorersOf(r);
+      const lab = r.our > r.their ? '승' : r.our < r.their ? '패' : '무';
+      const scName = k => (k === 'merc' ? '용병' : k === 'og' ? '상대 자책골' : k === 'unk' ? '미상' : (byId[k] ? byId[k].name : '?'));
+      const n = tally(s).attend.length + guestsOf(s).length;
+      return {
+        date: p.md, dow: p.dow, title: matchLabel(s) || s.venue || '', score: r.our + ' : ' + r.their, label: lab, bt: i ? '1px solid #F0EFEB' : 'none',
+        stripe: lab === '승' ? '#6CC04A' : lab === '패' ? '#E0453A' : '#D8C07A',
+        lbg: lab === '승' ? '#C71F10' : lab === '패' ? '#6B6B66' : '#D8C07A', lfg: lab === '무' ? '#3D2F08' : '#FFFFFF',
+        meta: [Object.keys(sc).length ? '득점 ' + Object.entries(sc).sort((a, b) => b[1] - a[1]).map(([k, c]) => scName(k) + (c > 1 ? ' ' + c : '')).join(', ') : '', n ? '참석 ' + n + '명' : ''].filter(Boolean).join(' · ') || (s.venue || ''),
+        onClick: () => { this.setState({ tab: 'records', recYear: s.date.slice(0, 4), recOpen: s.id }); window.scrollTo(0, 0); }
+      };
+    });
     const extraGoals = [goals.merc ? '용병 ' + goals.merc + '골' : '', goals.og ? '상대 자책골 ' + goals.og : '', goals.unk ? '득점자 미상 ' + goals.unk + '골' : ''].filter(Boolean).join(' · ');
 
     return {
@@ -832,7 +853,8 @@ class HwarangApp {
       saveGuest: () => this.addGuest(next),
       onGuestKey: e => { if (e.key === 'Enter') this.addGuest(next); },
       upcoming, upcomingEmpty: !upcoming.length,
-      goFormation: go('formation'), goSchedule: go('schedule'), goHome: go('home'),
+      goFormation: go('formation'), goSchedule: go('schedule'), goHome: go('home'), goRecords: go('records'),
+      recentGames, recentEmpty: !recentGames.length,
       // 포메이션
       mySummary, myQuarters, myLabel: me ? me.name + '님 포지션' : '내 포지션', qButtons, pitchSlots, qInfo, qHeads, lineupRows,
       formationEmpty: !fmReadyData, formationReady: fmReadyData,
@@ -893,7 +915,7 @@ class HwarangApp {
       recGameRows, recGamesEmpty: !recGameRows.length,
       // 구성원
       memberTotal: sorted.length + '명',
-      memberSub: (seasonPast.length ? '참석률은 ' + year + ' 시즌 출석 기록이 있는 ' + seasonPast.length + '경기 기준이에요.' : '참석률은 경기가 끝난 뒤부터 집계돼요.') + (isAdmin ? ' 이름을 누르면 수정할 수 있어요.' : ''),
+      memberSub: (seasonPast.length ? '참석률은 ' + year + ' 시즌 출석 기록이 있는 ' + seasonPast.length + '경기 기준이에요.' : '참석률은 경기가 끝난 뒤부터 집계돼요.') + ' 왼쪽 포지션 칸을 누르면 바꿀 수 있어요.' + (isAdmin ? ' 이름을 누르면 수정할 수 있어요.' : ''),
       memberQuery: this.memberQuery,
       onMemberQuery: e => { this.memberQuery = e.target.value; filterByQuery('[data-member]', 'member', this.memberQuery, 'memberEmpty', 'grid'); },
       posFilters, memberRows, memberEmpty: String(!memberRows.some(r => r.display !== 'none')),
