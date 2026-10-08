@@ -744,10 +744,6 @@ class HwarangApp {
     const year = today.slice(0, 4);
     // 참석률은 올해 지난 일정 중 출석 기록이 있는 경기만 센다(기록 없이 일정만 올린 경기는 뺀다)
     const seasonPast = pastAll.filter(s => s.date.slice(0, 4) === year && tally(s).attend.length > 0);
-    // 시즌 골: 올해 경기 기록(result)의 득점자 합계
-    const seasonGoals = {};
-    schedules.filter(s => s.date.slice(0, 4) === year && resultOf(s))
-      .forEach(s => Object.entries(scorersOf(s.result)).forEach(([k, n]) => { seasonGoals[k] = (seasonGoals[k] || 0) + n; }));
     const counts = { all: sorted.length, GK: 0, DF: 0, MF: 0, FW: 0 };
     sorted.forEach(m => { if (counts[m.pos] != null) counts[m.pos]++; });
     const posFilters = [['all', '전체'], ['GK', 'GK'], ['DF', 'DF'], ['MF', 'MF'], ['FW', 'FW']].map(([k, l]) => {
@@ -759,9 +755,7 @@ class HwarangApp {
     const memberRows = inPos.map(m => {
       const isMe = m === me, att = seasonPast.filter(s => statusOf(s, m.id) === 'attend').length;
       const rate = seasonPast.length ? Math.round(att / seasonPast.length * 100) + '%' : '0%';
-      const s = statusOf(next, m.id);
       return { name: isMe ? m.name + ' (나)' : m.name, key: keyOf(m), pos: m.pos || '-',
-        sub: [next ? '이번 경기 ' + (s ? LABEL[s] : '미응답') : '', seasonPast.length ? '참석 ' + att + '/' + seasonPast.length : '', seasonGoals[m.id] ? year + ' 시즌 ' + seasonGoals[m.id] + '골' : ''].filter(Boolean).join(' · '),
         rate, display: !mq || keyOf(m).includes(mq) ? 'grid' : 'none',
         weight: isMe ? 800 : 700, fg: isMe ? '#A3190B' : '#141414', bg: isMe ? '#FBE9E6' : 'transparent', radius: isMe ? '10px' : '0',
         posBg: m.pos === 'GK' ? '#F6F0DC' : '#F3F3F0', posFg: m.pos === 'GK' ? '#6E5513' : '#141414', posLine: m.pos === 'GK' ? '#D8C07A' : '#DDDCD6',
