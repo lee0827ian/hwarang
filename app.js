@@ -119,6 +119,10 @@ window.parseQuarterLog = parseQuarterLog;
 
 // 기기 시간대 기준 오늘 날짜(YYYY-MM-DD)
 const localDate = () => { const n = new Date(); return new Date(n - n.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+// 경기 당일 오전 7시가 되면 그날 경기는 지난 일정으로 넘기고 다음 경기를 보여 준다.
+// 이 날짜보다 앞선 일정 = 지난 일정(7시 전이면 오늘, 7시부터는 내일)
+const SWITCH_HOUR = 7;
+const cutDate = () => { const n = new Date(); if (n.getHours() >= SWITCH_HOUR) n.setDate(n.getDate() + 1); return new Date(n - n.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const posName = slot => slot.replace(/\d/g, '');
 const el = id => document.getElementById(id);
@@ -288,6 +292,8 @@ class HwarangApp {
           .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
         this.dataChanged();
       }, () => this.fail());
+      // 화면을 켜 둔 채 7시를 넘겨도 다음 경기로 바뀌게 1분마다 확인
+      setInterval(() => this.setState({ cut: cutDate() }), 60000);
     } catch (e) { this.fail(); }
   }
   fail() { this.loadError = '데이터를 불러오지 못했어요. 잠시 후 새로고침해 주세요.'; this.render(); }
@@ -316,7 +322,7 @@ class HwarangApp {
     const p = this.pendingRsvp;
     if (!p || this.members === null || this.schedules === null) return;
     const s = this.schedules.find(x => x.id === p.id), when = this.pendingLabel();
-    if (!s || s.date < localDate()) {
+    if (!s || s.date < cutDate()) {
       this.pendingRsvp = null;
       this.flash(s ? when + '는 이미 지나서 응답을 바꿀 수 없어요.' : '찾을 수 없는 일정이에요.');
       return;
@@ -417,7 +423,7 @@ class HwarangApp {
     geocode(data.address, data.venue).then(coord => {
       const doc = { ...data, lat: coord ? coord.lat : null, lng: coord ? coord.lng : null, updatedAt: Date.now() };
       return f.id ? ref.update(doc) : ref.set({ ...doc, rsvp: {}, quarters: [] });
-    }).then(() => this.setState({ schedForm: null, schedSel: ref.id, schedView: data.date >= localDate() ? 'upcoming' : 'past' }))
+    }).then(() => this.setState({ schedForm: null, schedSel: ref.id, schedView: data.date >= cutDate() ? 'upcoming' : 'past' }))
       .catch(() => this.setState({ schedForm: { ...f, ...data, saving: false, error: '저장하지 못했어요. 잠시 후 다시 눌러 주세요.' } }));
   }
   saveMember() {
@@ -495,9 +501,9 @@ class HwarangApp {
     const isAdmin = !!(me && me.admin);
     const keyOf = m => m.name.replace(/\s/g, '');
 
-    const today = localDate();
-    const upcomingAll = schedules.filter(s => s.date >= today);
-    const pastAll = schedules.filter(s => s.date < today).reverse();
+    const today = localDate(), cut = cutDate();
+    const upcomingAll = schedules.filter(s => s.date >= cut);
+    const pastAll = schedules.filter(s => s.date < cut).reverse();
     const next = upcomingAll[0] || null;
     const statusOf = (s, id) => (s && s.rsvp && s.rsvp[id]) || null;
     // 일정 하나의 용병(등록한 순서). 용병은 참석 인원에 더해 센다
@@ -521,7 +527,7 @@ class HwarangApp {
       const o = (s.opponent || '').trim();
       if (/^자체\s*(전|경기)$/.test(o)) return '자체전';
       if (o && o !== '미정') return 'vs ' + o;
-      return s.date < today ? '상대 미기록' : '상대 미정';
+      return s.date < cut ? '상대 미기록' : '상대 미정';
     };
 
     // 탭
