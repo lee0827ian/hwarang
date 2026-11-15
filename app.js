@@ -115,7 +115,64 @@ function scorersOf(r) {
     .forEach(sc => Object.entries(sc).forEach(([k, n]) => { t[k] = (t[k] || 0) + n; }));
   return t;
 }
+// 유튜브 경기 영상 링크: 영상 하나(watch·youtu.be·shorts·live) 또는 재생목록을 받아 깔끔한 주소로 바꾼다. 유튜브가 아니면 null, 빈칸이면 ''
+function ytUrl(raw) {
+  const t = String(raw || '').trim();
+  if (!t) return '';
+  let u;
+  try { u = new URL(/^https?:\/\//i.test(t) ? t : 'https://' + t); } catch (e) { return null; }
+  const host = u.hostname.replace(/^(www|m|music)\./, '');
+  const id = x => (x && /^[\w-]{6,}$/.test(x) ? x : null);
+  const list = id(u.searchParams.get('list'));
+  let v = null;
+  if (host === 'youtu.be') v = id(u.pathname.slice(1).split('/')[0]);
+  else if (host === 'youtube.com') {
+    const m = /^\/(shorts|live|embed)\/([\w-]+)/.exec(u.pathname);
+    v = m ? id(m[2]) : id(u.searchParams.get('v'));
+  } else return null;
+  if (v) return 'https://www.youtube.com/watch?v=' + v + (list ? '&list=' + list : '');
+  if (list) return 'https://www.youtube.com/playlist?list=' + list;
+  return null;
+}
+// 유튜브 주소에서 영상 id / 재생목록 id
+function ytParts(url) {
+  const u = ytUrl(url);
+  if (!u) return null;
+  const q = new URL(u).searchParams;
+  return { v: q.get('v'), list: q.get('list') };
+}
+// 영상 장면 표: 유튜브 링크가 있는 줄이 영상 하나(링크 앞 글자가 이름, 예 "1쿼터 https://youtu.be/..."),
+// 그 아래 "1:30 쿼터시작" · "20:13 ~ 20:44 트래킹 오류" 같은 줄이 그 영상의 장면. 유튜브 설명란을 그대로 붙여 넣어도 된다.
+function parseClips(text) {
+  const clips = [], errors = [];
+  const sec = t => t.split(':').reduce((a, x) => a * 60 + Number(x), 0);
+  for (const raw of String(text || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const link = /(https?:\/\/)?(www\.|m\.)?(youtube\.com|youtu\.be)\/\S+/i.exec(line);
+    if (link) {
+      const yp = ytParts(link[0]);
+      if (!yp || !yp.v) { errors.push('영상 장면: "' + link[0] + '" — 영상 하나짜리 유튜브 링크가 아니에요'); continue; }
+      const label = line.replace(link[0], '').replace(/[\s:：\-–—]+$/, '').trim();
+      clips.push({ v: yp.v, label: label || (clips.length + 1) + '번 영상', marks: [] });
+      continue;
+    }
+    const m = /^((?:\d{1,2}:)?\d{1,2}:\d{2})\s*(?:~\s*((?:\d{1,2}:)?\d{1,2}:\d{2}))?\s*(.*)$/.exec(line);
+    if (!m) continue;   // 설명란의 제목 줄 같은 것은 건너뛴다
+    if (!clips.length) { errors.push('영상 장면: 시간 줄 위에 유튜브 영상 링크 줄이 있어야 해요'); break; }
+    const mk = { t: sec(m[1]), l: m[3].trim() };
+    if (m[2]) mk.e = sec(m[2]);
+    clips[clips.length - 1].marks.push(mk);
+  }
+  return { clips, errors };
+}
+const fmtSec = n => { const h = Math.floor(n / 3600), m = Math.floor(n / 60) % 60, x = String(n % 60).padStart(2, '0'); return h ? h + ':' + String(m).padStart(2, '0') + ':' + x : m + ':' + x; };
+function clipsText(clips) {
+  return (clips || []).map(c => [c.label + ' https://youtu.be/' + c.v].concat((c.marks || []).map(k => fmtSec(k.t) + (k.e != null ? ' ~ ' + fmtSec(k.e) : '') + ' ' + k.l)).join('\n')).join('\n\n');
+}
 window.parseQuarterLog = parseQuarterLog;
+window.parseClips = parseClips;
+window.ytUrl = ytUrl;
 
 // 기기 시간대 기준 오늘 날짜(YYYY-MM-DD)
 const localDate = () => { const n = new Date(); return new Date(n - n.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
@@ -240,6 +297,7 @@ class HwarangApp {
       schedView: 'upcoming', schedSel: undefined, schedForm: null, resultForm: null,
       memberPos: 'all', memberForm: null,
       recYear: null, recOpen: null, recAllAtt: false, recAllGoals: false,
+      vidOpen: null, vidSel: {},
       isMobile: window.innerWidth < MOBILE_WIDTH
     };
   }
@@ -398,16 +456,24 @@ class HwarangApp {
   submitResult(save) {
     const f = this.state.resultForm;
     const text = el('rf-text') ? el('rf-text').value : f.text;
+    const videoRaw = el('rf-video') ? el('rf-video').value : (f.video || '');
+    const video = ytUrl(videoRaw);
     const p = parseQuarterLog(text, this.members || []);
+    if (video === null) p.errors.push('영상 링크가 유튜브 주소가 아니에요 — 영상이나 재생목록 링크를 넣어 주세요');
+    const clipsRaw = el('rf-clips') ? el('rf-clips').value : (f.clips || '');
+    const pc = parseClips(clipsRaw);
+    p.errors.push(...pc.errors);
     const T = p.total;
     const preview = T ? ['쿼터별 점수 없이 합계만' + (T.qn ? ' (' + T.qn + '쿼터)' : '') + (T.names.length ? '  (' + T.names.join(', ') + ')' : '')]
       : p.qs.map((q, i) => (i + 1) + '쿼터  ' + q.our + ' : ' + q.their + (q.names.length ? '  (' + q.names.join(', ') + ')' : ''));
     const our = T ? T.our : p.qs.reduce((x, q) => x + q.our, 0), their = T ? T.their : p.qs.reduce((x, q) => x + q.their, 0);
-    const next = { ...f, text, preview, errors: p.errors, warnings: p.warnings, total: (p.qs.length || T) ? '합계 ' + our + ' : ' + their + ' (' + (our > their ? '승' : our < their ? '패' : '무') + ')' : '', checked: true };
+    const next = { ...f, text, video: videoRaw, clips: clipsRaw, preview, errors: p.errors, warnings: p.warnings, total: (p.qs.length || T) ? '합계 ' + our + ' : ' + their + ' (' + (our > their ? '승' : our < their ? '패' : '무') + ')' : '', checked: true };
     if (!save || p.errors.length) { this.setState({ resultForm: { ...next, error: save && p.errors.length ? '빨간 줄을 고친 뒤 다시 저장해 주세요.' : '' } }); return; }
     this.setState({ resultForm: { ...next, saving: true, error: '' } });
     const result = T ? { qs: [], sc: T.sc, qn: T.qn, our, their, at: Date.now(), by: this.state.me || null }
       : { qs: p.qs.map(q => ({ our: q.our, their: q.their, sc: q.sc })), our, their, at: Date.now(), by: this.state.me || null };
+    if (video) result.video = video;
+    if (pc.clips.length) result.clips = pc.clips;
     this.db.collection('hw_schedules').doc(f.id).update({ result, updatedAt: Date.now() })
       .then(() => this.setState({ resultForm: null, schedSel: f.id }))
       .catch(() => this.setState({ resultForm: { ...next, saving: false, error: '저장하지 못했어요. 잠시 후 다시 눌러 주세요.' } }));
@@ -452,6 +518,42 @@ class HwarangApp {
   // ── 지도 ──
   // 화면을 다시 그릴 때마다 #venueMap 자리가 새로 생기므로 지도 본체(this._mapEl)는 한 번만 만들고 옮겨 붙인다.
   afterRender() {
+    this.placePlayer();
+    this.mapAfterRender();
+  }
+  // 유튜브 플레이어는 화면을 다시 그릴 때마다 새로 불러오지 않도록 body에 따로 두고, 템플릿의 자리(data-yt-slot) 위에 겹쳐 놓는다.
+  placePlayer() {
+    const slot = document.querySelector('[data-yt-slot]');
+    if (!this._yt) {
+      const host = document.createElement('div');
+      host.style.cssText = 'position:absolute; z-index:50; display:none; border-radius:12px; overflow:hidden; background:#000;';
+      const fr = document.createElement('iframe');
+      fr.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+      fr.setAttribute('allowfullscreen', '');
+      fr.style.cssText = 'width:100%; height:100%; border:0; display:block;';
+      host.appendChild(fr);
+      document.body.appendChild(host);
+      this._yt = { host, fr, key: '' };
+      // 크기가 바뀌면 다음 프레임에 한 번만 다시 맞춘다(같은 프레임에서 되풀이되지 않게)
+      const again = () => { if (this._ytRaf) return; this._ytRaf = requestAnimationFrame(() => { this._ytRaf = 0; this.placePlayer(); }); };
+      window.addEventListener('resize', again);
+      if (window.ResizeObserver) new ResizeObserver(again).observe(this.root);
+    }
+    const y = this._yt;
+    if (!slot || !slot.dataset.src) {
+      y.host.style.display = 'none';
+      if (y.key) { y.fr.src = 'about:blank'; y.key = ''; }
+      return;
+    }
+    const key = slot.dataset.key || slot.dataset.src;
+    if (y.key !== key) { y.fr.src = slot.dataset.src; y.key = key; }
+    const r = slot.getBoundingClientRect();
+    const pos = [Math.round(r.top + window.scrollY), Math.round(r.left + window.scrollX), Math.round(r.width), Math.round(r.height)];
+    if (y.host.style.display === 'block' && y.pos === pos.join()) return;
+    y.pos = pos.join();
+    Object.assign(y.host.style, { display: 'block', top: pos[0] + 'px', left: pos[1] + 'px', width: pos[2] + 'px', height: pos[3] + 'px' });
+  }
+  mapAfterRender() {
     const slot = el('venueMap');
     if (!slot) return;
     const d = slot.dataset;
@@ -532,7 +634,7 @@ class HwarangApp {
 
     // 탭
     const go = k => () => { this.setState({ tab: k }); window.scrollTo(0, 0); };
-    const tabs = [['home', '홈'], ['formation', '포메이션'], ['schedule', '일정'], ['records', '기록'], ['members', '구성원']].map(([k, l]) => {
+    const tabs = [['home', '홈'], ['video', '영상'], ['schedule', '일정'], ['records', '기록'], ['members', '구성원']].map(([k, l]) => {
       const on = st.tab === k;
       return { label: l, onClick: go(k), color: on ? '#141414' : '#6B6B6B', weight: on ? 800 : 600, bar: on ? '#C71F10' : 'transparent' };
     });
@@ -716,14 +818,15 @@ class HwarangApp {
           bg: resLabel === '승' ? '#C71F10' : resLabel === '패' ? '#6B6B66' : '#D8C07A', fg: resLabel === '무' ? '#3D2F08' : '#FFFFFF',
           hasQs: resQs.length > 0, cols: resQs.length || 1, qs: resQs.map((q, i) => ({ label: (i + 1) + 'Q', score: q.our + ':' + q.their, fg: q.our > q.their ? '#A3190B' : '#141414' })),
           scorers: Object.entries(scorerTotals).sort((x, y) => y[1] - x[1]).map(([k, n]) => scorerName(k) + (n > 1 ? ' ' + n : '')).join(' · '),
-          hasScorers: Object.keys(scorerTotals).length > 0
+          hasScorers: Object.keys(scorerTotals).length > 0,
+          video: ytUrl(res.video) || ''
         } : {},
         canRecord: isAdmin && s.date <= today, recordLabel: res ? '경기 기록 수정' : '경기 기록 입력',
         onRecord: () => {
           const nm = k => (k === 'merc' ? '용병' : k === 'og' ? '자책골' : k === 'unk' ? '미상' : (byId[k] ? byId[k].name : '?'));
           const scTxt = sc => (Object.keys(sc || {}).length ? ' (' + Object.entries(sc).map(([k, n]) => nm(k) + (n > 1 ? n : '')).join(', ') + ')' : '');
           const txt = res && !resQs.length ? (res.qn ? range(res.qn).map(i => i + 1).join(',') + '쿼터 ' : '합계 ') + res.our + ' : ' + res.their + scTxt(res.sc) : res ? res.qs.map((q, i) => (i + 1) + '쿼터 - ' + q.our + ' : ' + q.their + (Object.keys(q.sc || {}).length ? ' (' + Object.entries(q.sc).map(([k, n]) => nm(k) + (n > 1 ? n : '')).join(', ') + ')' : '')).join('\n') : '';
-          this.setState({ resultForm: { id: s.id, title: p.md + ' ' + (s.opponent ? 'vs ' + s.opponent : s.venue || '') + ' 경기 기록', text: txt, hasExisting: !!res, preview: [], errors: [], warnings: [], total: '', error: '', checked: false } });
+          this.setState({ resultForm: { id: s.id, title: p.md + ' ' + (s.opponent ? 'vs ' + s.opponent : s.venue || '') + ' 경기 기록', text: txt, video: (res && res.video) || '', clips: res ? clipsText(res.clips) : '', hasExisting: !!res, preview: [], errors: [], warnings: [], total: '', error: '', checked: false } });
           window.scrollTo(0, 0);
         },
         open, onClick: () => this.setState({ schedSel: open ? null : s.id }),
@@ -807,7 +910,8 @@ class HwarangApp {
         open, onClick: () => this.setState({ recOpen: open ? null : s.id }),
         hasQs: rq.length > 0, qCols: rq.length || 1, qs: rq.length ? rq.map((q, i) => ({ label: (i + 1) + 'Q', score: q.our + ':' + q.their, fg: q.our > q.their ? '#A3190B' : '#141414' })) : [],
         attendees: meFirst(t.attend).map(m => ({ name: m.name, bg: m === me ? '#141414' : '#FBE9E6', fg: m === me ? '#FFFFFF' : '#A3190B' })).concat(gs.map(x => ({ name: /^용병/.test(x.name) ? x.name : x.name + ' · 용병', bg: '#F6F0DC', fg: '#6E5513' }))),
-        noAttend: !t.attend.length && !gs.length
+        noAttend: !t.attend.length && !gs.length,
+        video: r ? ytUrl(r.video) || '' : ''
       };
     });
     // 홈 '최근 경기 기록': 경기 기록이 있는 지난 경기 최근 3개, 누르면 기록 탭에서 그 경기를 펼친다
@@ -824,6 +928,39 @@ class HwarangApp {
         onClick: () => { this.setState({ tab: 'records', recYear: s.date.slice(0, 4), recOpen: s.id }); window.scrollTo(0, 0); }
       };
     });
+    // 경기 영상: 영상 링크나 장면 표가 있는 경기, 최신순. 홈 카드와 영상 탭이 같은 모양(vidView)을 쓴다.
+    const hasVid = s => { const r = resultOf(s); return !!(r && (ytUrl(r.video) || (Array.isArray(r.clips) && r.clips.length))); };
+    const vidGames = (this.schedules || []).filter(s => s.date <= today && hasVid(s)).slice().reverse();
+    const vidView = s => {
+      const r = s.result, p = dateParts(s), clips = Array.isArray(r.clips) ? r.clips : [];
+      const lab = r.our > r.their ? '승' : r.our < r.their ? '패' : '무';
+      const sel = (st.vidSel || {})[s.id] || { i: 0, t: 0, n: 0 };
+      const ci = Math.min(sel.i, Math.max(0, clips.length - 1)), clip = clips[ci];
+      const yp = ytParts(r.video) || {};
+      const opts = 'playsinline=1&rel=0' + (sel.n ? '&autoplay=1' : '') + (sel.t ? '&start=' + sel.t : '');
+      const src = clip ? 'https://www.youtube.com/embed/' + clip.v + '?' + opts
+        : yp.v ? 'https://www.youtube.com/embed/' + yp.v + '?' + opts
+        : 'https://www.youtube.com/embed/videoseries?list=' + yp.list + '&' + opts;
+      const pick = (i, t) => () => this.setState({ vidSel: { ...st.vidSel, [s.id]: { i, t, n: Date.now() } } });
+      return {
+        id: s.id, date: p.md, dow: p.dow, title: matchLabel(s) || s.venue || '', venue: s.venue || '',
+        score: r.our + ' : ' + r.their, label: lab,
+        stripe: lab === '승' ? '#6CC04A' : lab === '패' ? '#E0453A' : '#D8C07A',
+        lbg: lab === '승' ? '#C71F10' : lab === '패' ? '#6B6B66' : '#D8C07A', lfg: lab === '무' ? '#3D2F08' : '#FFFFFF',
+        src, slotKey: src + '#' + sel.n,
+        hasChips: clips.length > 1, chipCols: 'repeat(' + Math.min(clips.length, 6) + ', minmax(0,1fr))',
+        chips: clips.map((c, i) => ({ label: c.label, onClick: pick(i, 0), bg: i === ci ? '#141414' : '#FFFFFF', fg: i === ci ? '#FFFFFF' : '#141414', bd: i === ci ? '#141414' : '#E2E1DC' })),
+        clipLabel: clip ? clip.label + ' 주요 장면' : '', hasMarks: !!(clip && clip.marks && clip.marks.length),
+        marks: clip ? (clip.marks || []).map(k => ({ time: fmtSec(k.t) + (k.e != null ? '~' + fmtSec(k.e) : ''), label: k.l, onClick: pick(ci, k.t), bg: sel.n && sel.t === k.t && sel.i === ci ? '#FBE9E6' : 'transparent' })) : [],
+        ytLink: ytUrl(r.video) || (clip ? 'https://www.youtube.com/watch?v=' + clip.v : '')
+      };
+    };
+    const vidOpenId = st.vidOpen === undefined || st.vidOpen === null ? (vidGames[0] && vidGames[0].id) : st.vidOpen;
+    const vidRows = vidGames.map(s => {
+      const open = s.id === vidOpenId;
+      return { ...(open ? vidView(s) : { ...vidView(s), src: '', slotKey: '' }), open, onClick: () => this.setState({ vidOpen: open ? false : s.id }) };
+    });
+    const homeVid = st.tab === 'home' && vidGames[0] ? vidView(vidGames[0]) : null;
     const extraGoals = [goals.merc ? '용병 ' + goals.merc + '골' : '', goals.og ? '상대 자책골 ' + goals.og : '', goals.unk ? '득점자 미상 ' + goals.unk + '골' : ''].filter(Boolean).join(' · ');
 
     return {
@@ -899,6 +1036,8 @@ class HwarangApp {
       saveSched: () => { if (!sf.saving) this.saveSchedule(); },
       // 기록
       recordsReady: ready && st.tab === 'records',
+      videoReady: ready && st.tab === 'video', vidRows, vidEmpty: !vidGames.length,
+      homeVid: homeVid || {}, hasHomeVid: !!homeVid, noHomeVid: !homeVid, goVideo: go('video'),
       recYears: recYears.length > 1 ? recYears.map(y => ({ label: y, onClick: () => this.setState({ recYear: y, recOpen: null }), bg: y === recYear ? '#141414' : '#FFFFFF', fg: y === recYear ? '#FFFFFF' : '#141414', bd: y === recYear ? '#141414' : '#E2E1DC' })) : [],
       recSub: recYear + ' 시즌 · 결과는 경기 기록을 넣은 ' + played.length + '경기, 출석은 참석 응답이 있는 ' + attGames.length + '경기 기준',
       recCards: [

@@ -211,37 +211,21 @@
       </div>
     </div>
 
-    <div style="grid-area:f; background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:{{ ui.cardPad }}; min-width:0;">
+    <div style="grid-area:f; background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:{{ ui.cardPad }}; min-width:0; display:flex; flex-direction:column; gap:10px;">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-        <span style="font-size:16px; font-weight:800;">이번 경기 포메이션</span>
-        <span onClick="{{ goFormation }}" style="font-size:13px; font-weight:800; color:#C71F10; cursor:pointer;">전체 보기</span>
+        <span style="font-size:16px; font-weight:800;">최근 경기 영상</span>
+        <span onClick="{{ goVideo }}" style="font-size:13px; font-weight:800; color:#C71F10; cursor:pointer;">전체 보기</span>
       </div>
-      <div style="margin-top:12px; padding:12px 14px; border-radius:12px; background:{{ mySummary.bg }}; display:flex; gap:10px; align-items:baseline;">
-        <span style="font-size:13px; font-weight:800; color:{{ mySummary.labelFg }}; flex-shrink:0;">내 포지션</span>
-        <span style="font-size:14px; font-weight:700; color:{{ mySummary.fg }};">{{ mySummary.text }}</span>
-      </div>
-      <div style="display:grid; grid-template-columns:repeat({{ qCols }}, minmax(0,1fr)); gap:6px; margin-top:12px;">
-        <sc-for list="{{ qButtons }}" as="q">
-          <div onClick="{{ q.onClick }}" style="position:relative; min-height:44px; display:flex; align-items:center; justify-content:center; border-radius:10px; cursor:pointer; font-size:14px; font-weight:800; background:{{ q.bg }}; color:{{ q.fg }}; border:1.5px solid {{ q.bd }};">{{ q.label }}<span style="position:absolute; top:6px; right:7px; width:6px; height:6px; border-radius:50%; background:{{ q.dot }};"></span></div>
-        </sc-for>
-      </div>
-      <div style="margin:12px auto 0; max-width:{{ ui.pitchMaxHome }};">
-        <div style="position:relative; width:100%; aspect-ratio:68 / 100; border-radius:12px; overflow:hidden; background:repeating-linear-gradient(180deg, #2F6B45 0 10%, #2B6440 10% 20%);">
-          <div style="position:absolute; inset:3.5%; border:2px solid rgba(255,255,255,.5); border-radius:2px;"></div>
-          <div style="position:absolute; left:3.5%; right:3.5%; top:50%; height:2px; margin-top:-1px; background:rgba(255,255,255,.5);"></div>
-          <div style="position:absolute; left:50%; top:50%; width:26%; aspect-ratio:1; transform:translate(-50%,-50%); border:2px solid rgba(255,255,255,.5); border-radius:50%;"></div>
-          <div style="position:absolute; left:28%; right:28%; top:3.5%; height:14%; border:2px solid rgba(255,255,255,.5); border-top:none;"></div>
-          <div style="position:absolute; left:28%; right:28%; bottom:3.5%; height:14%; border:2px solid rgba(255,255,255,.5); border-bottom:none;"></div>
-          <sc-for list="{{ pitchSlots }}" as="s">
-            <div style="position:absolute; left:{{ s.x }}; top:{{ s.y }}; transform:translate(-50%,-50%); display:flex; align-items:center; gap:4px; padding:4px 8px 4px 6px; border-radius:999px; white-space:nowrap; background:{{ s.bg }}; color:{{ s.fg }}; border:1.5px {{ s.bdStyle }} {{ s.bd }}; box-shadow:{{ s.shadow }};">
-              <span style="font-size:12px; font-weight:800; color:{{ s.posFg }};">{{ s.pos }}</span>
-              <span style="font-size:12px; font-weight:800;">{{ s.name }}</span>
-            </div>
-          </sc-for>
+      <sc-if value="{{ hasHomeVid }}">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <span style="font-size:14px; font-weight:800;">{{ homeVid.date }}({{ homeVid.dow }}) {{ homeVid.title }}</span>
+          <span style="font-size:14px; font-weight:800; margin-left:auto;">{{ homeVid.score }}</span>
+          <span style="font-size:12px; font-weight:800; padding:3px 8px; border-radius:7px; background:{{ homeVid.lbg }}; color:{{ homeVid.lfg }};">{{ homeVid.label }}</span>
         </div>
-      </div>
-      <sc-if value="{{ formationEmpty }}">
-        <div style="margin-top:12px; text-align:center; font-size:13px; color:#5F5F5F;">아직 포메이션이 없어요. 운영진이 경기 전날까지 올려요.</div>
+        <sc-if value="{{ homeVid.hasChips }}"><div style="display:grid; grid-template-columns:{{ homeVid.chipCols }}; gap:6px;"><sc-for list="{{ homeVid.chips }}" as="c"><div onClick="{{ c.onClick }}" style="min-height:38px; display:flex; align-items:center; justify-content:center; border-radius:10px; cursor:pointer; font-size:13px; font-weight:800; background:{{ c.bg }}; color:{{ c.fg }}; border:1.5px solid {{ c.bd }};">{{ c.label }}</div></sc-for></div></sc-if><div data-yt-slot="1" data-src="{{ homeVid.src }}" data-key="{{ homeVid.slotKey }}" style="width:100%; aspect-ratio:16/9; border-radius:12px; background:#141414;"></div><sc-if value="{{ homeVid.hasMarks }}"><div><div style="font-size:13px; font-weight:800; color:#5F5F5F; margin-bottom:4px;">{{ homeVid.clipLabel }} <span style="font-weight:600; color:#8A8A85;">· 누르면 그 장면부터 재생</span></div><sc-for list="{{ homeVid.marks }}" as="k"><div onClick="{{ k.onClick }}" style="display:flex; gap:10px; align-items:baseline; padding:7px 6px; border-radius:8px; cursor:pointer; background:{{ k.bg }};"><span style="font-size:13px; font-weight:800; color:#1A66D2; min-width:44px; font-variant-numeric:tabular-nums;">{{ k.time }}</span><span style="font-size:14px; color:#141414;">{{ k.label }}</span></div></sc-for></div></sc-if><sc-if value="{{ homeVid.ytLink }}"><a href="{{ homeVid.ytLink }}" target="_blank" rel="noopener" style="align-self:flex-end; font-size:13px; font-weight:800; color:#C71F10; text-decoration:none;">유튜브에서 보기 ›</a></sc-if>
+      </sc-if>
+      <sc-if value="{{ noHomeVid }}">
+        <div style="font-size:13px; color:#5F5F5F; padding:6px 0;">아직 올라온 경기 영상이 없어요. 운영진이 경기 기록에 영상 링크를 넣으면 여기에 보여요.</div>
       </sc-if>
     </div>
 
@@ -429,6 +413,10 @@
         <div style="font-size:16px; font-weight:800;">{{ resultForm.title }}</div>
         <div style="font-size:13px; color:#5F5F5F; margin-top:6px; line-height:1.5;">카톡에 올린 쿼터 기록을 그대로 붙여 넣으세요. 한 줄에 한 쿼터, 왼쪽이 화랑 점수예요.<br>예) 2쿼터 - 1 : 1 (기현) · 2골이면 (준원2) · 여럿이면 (준원, 기현) · 용병 골은 (용병)</div>
         <textarea id="rf-text" rows="7" value="{{ resultForm.text }}" placeholder="1쿼터 - 0 : 1&#10;2쿼터 - 1 : 1 (기현)" style="display:block; width:100%; margin-top:5px; padding:11px 12px; border-radius:10px; border:1.5px solid #E2E1DC; background:#FFFFFF; font-family:inherit; font-size:15px; color:#141414; outline:none; resize:vertical; line-height:1.5;"></textarea>
+        <div style="font-size:13px; font-weight:700; color:#5F5F5F; margin-top:12px;">경기 영상 (선택)</div>
+        <input id="rf-video" type="url" value="{{ resultForm.video }}" placeholder="유튜브 영상이나 재생목록 링크" style="display:block; width:100%; margin-top:5px; padding:11px 12px; border-radius:10px; border:1.5px solid #E2E1DC; background:#FFFFFF; font-family:inherit; font-size:15px; color:#141414; outline:none;">
+        <div style="font-size:13px; font-weight:700; color:#5F5F5F; margin-top:12px;">영상 장면 (선택) — 쿼터 영상 링크 줄 아래에 "1:30 킥오프"처럼. 유튜브 설명란을 그대로 붙여 넣어도 돼요</div>
+        <textarea id="rf-clips" rows="6" value="{{ resultForm.clips }}" placeholder="1쿼터 https://youtu.be/영상주소&#10;1:30 킥오프&#10;11:44 PK 획득&#10;&#10;2쿼터 https://youtu.be/영상주소&#10;0:25 킥오프" style="display:block; width:100%; margin-top:5px; padding:11px 12px; border-radius:10px; border:1.5px solid #E2E1DC; background:#FFFFFF; font-family:inherit; font-size:14px; color:#141414; outline:none; resize:vertical; line-height:1.5;"></textarea>
         <sc-if value="{{ resultForm.hasPreview }}">
           <div style="margin-top:10px; padding:10px 12px; border-radius:10px; background:#F6F6F4; font-size:14px; line-height:1.7;">
             <sc-for list="{{ resultForm.preview }}" as="l"><div style="white-space:pre;">{{ l }}</div></sc-for>
@@ -501,6 +489,7 @@
                       <sc-if value="{{ s.res.hasScorers }}">
                         <div style="font-size:13px; margin-top:10px;"><span style="font-weight:800; color:#A3190B;">득점</span> · {{ s.res.scorers }}</div>
                       </sc-if>
+                      <sc-if value="{{ s.res.video }}"><a href="{{ s.res.video }}" target="_blank" rel="noopener" style="display:flex; align-items:center; justify-content:center; gap:6px; min-height:40px; margin-top:10px; border-radius:10px; background:#141414; color:#FFFFFF; font-size:13px; font-weight:800; text-decoration:none;"><span style="color:#FF3B30;">&#9654;</span> 경기 영상 보기</a></sc-if>
                     </div>
                   </sc-if>
                   <div style="display:flex; height:8px; border-radius:4px; overflow:hidden; background:#EFEFEB;">
@@ -595,6 +584,37 @@
   </div>
   </sc-if>
 
+  <sc-if value="{{ videoReady }}">
+  <div data-screen-label="영상" style="max-width:1120px; margin:0 auto; padding:{{ ui.mainPad }}; display:flex; flex-direction:column; gap:{{ ui.gap }};">
+    <div>
+      <div style="font-size:{{ ui.pageTitle }}; font-weight:800; letter-spacing:-.5px;">경기 영상</div>
+      <div style="font-size:13px; color:#5F5F5F; margin-top:4px;">경기를 누르면 영상이 펼쳐져요. 장면 시간을 누르면 그 장면부터 재생돼요.</div>
+    </div>
+    <sc-if value="{{ vidEmpty }}">
+      <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:{{ ui.cardPad }}; font-size:13px; color:#5F5F5F;">아직 올라온 경기 영상이 없어요. 운영진이 경기 기록에 영상 링크를 넣으면 여기에 보여요.</div>
+    </sc-if>
+    <div style="background:#FFFFFF; border:1px solid #EAEAE6; border-radius:16px; padding:{{ ui.listPad }};">
+      <sc-for list="{{ vidRows }}" as="g">
+        <div style="border-bottom:1px solid #F0EFEB;">
+          <div onClick="{{ g.onClick }}" style="display:grid; grid-template-columns:52px minmax(0,1fr) auto; gap:12px; align-items:center; padding:12px 4px 12px 8px; border-left:4px solid {{ g.stripe }}; cursor:pointer;">
+            <div><div style="font-size:17px; font-weight:800; letter-spacing:-.5px;">{{ g.date }}</div><div style="font-size:12px; font-weight:700; color:#5F5F5F;">{{ g.dow }}요일</div></div>
+            <div style="min-width:0;"><div style="font-size:14px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ g.title }}</div><div style="font-size:12.5px; color:#5F5F5F; margin-top:3px;">{{ g.venue }}</div></div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:17px; font-weight:800; white-space:nowrap;">{{ g.score }}</span>
+              <span style="font-size:12px; font-weight:800; padding:3px 8px; border-radius:7px; background:{{ g.lbg }}; color:{{ g.lfg }};">{{ g.label }}</span>
+            </div>
+          </div>
+          <sc-if value="{{ g.open }}">
+            <div style="padding:2px 4px 16px; display:flex; flex-direction:column; gap:10px;">
+              <sc-if value="{{ g.hasChips }}"><div style="display:grid; grid-template-columns:{{ g.chipCols }}; gap:6px;"><sc-for list="{{ g.chips }}" as="c"><div onClick="{{ c.onClick }}" style="min-height:38px; display:flex; align-items:center; justify-content:center; border-radius:10px; cursor:pointer; font-size:13px; font-weight:800; background:{{ c.bg }}; color:{{ c.fg }}; border:1.5px solid {{ c.bd }};">{{ c.label }}</div></sc-for></div></sc-if><div data-yt-slot="1" data-src="{{ g.src }}" data-key="{{ g.slotKey }}" style="width:100%; aspect-ratio:16/9; border-radius:12px; background:#141414;"></div><sc-if value="{{ g.hasMarks }}"><div><div style="font-size:13px; font-weight:800; color:#5F5F5F; margin-bottom:4px;">{{ g.clipLabel }} <span style="font-weight:600; color:#8A8A85;">· 누르면 그 장면부터 재생</span></div><sc-for list="{{ g.marks }}" as="k"><div onClick="{{ k.onClick }}" style="display:flex; gap:10px; align-items:baseline; padding:7px 6px; border-radius:8px; cursor:pointer; background:{{ k.bg }};"><span style="font-size:13px; font-weight:800; color:#1A66D2; min-width:44px; font-variant-numeric:tabular-nums;">{{ k.time }}</span><span style="font-size:14px; color:#141414;">{{ k.label }}</span></div></sc-for></div></sc-if><sc-if value="{{ g.ytLink }}"><a href="{{ g.ytLink }}" target="_blank" rel="noopener" style="align-self:flex-end; font-size:13px; font-weight:800; color:#C71F10; text-decoration:none;">유튜브에서 보기 ›</a></sc-if>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  </sc-if>
+
   <sc-if value="{{ recordsReady }}">
   <div data-screen-label="기록" style="max-width:1120px; margin:0 auto; padding:{{ ui.mainPad }}; display:flex; flex-direction:column; gap:{{ ui.gap }};">
     <div>
@@ -673,6 +693,7 @@
                   </sc-for>
                 </div>
               </sc-if>
+              <sc-if value="{{ g.video }}"><a href="{{ g.video }}" target="_blank" rel="noopener" style="display:flex; align-items:center; justify-content:center; gap:6px; min-height:40px; border-radius:10px; background:#141414; color:#FFFFFF; font-size:13px; font-weight:800; text-decoration:none;"><span style="color:#FF3B30;">&#9654;</span> 경기 영상 보기</a></sc-if>
               <div style="font-size:13px; font-weight:800; color:#5F5F5F;">참석자</div>
               <sc-if value="{{ g.noAttend }}"><div style="font-size:13px; color:#8A8A85;">참석 응답 기록이 없어요.</div></sc-if>
               <div style="display:flex; flex-wrap:wrap; gap:5px;">
