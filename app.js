@@ -666,10 +666,11 @@ class HwarangApp {
     const rsvpButtons = ['attend', 'maybe', 'absent'].map(k => {
       const on = myStatus === k;
       return { label: LABEL[k], bg: on ? PAL[k][2] : '#FFFFFF', color: on ? PAL[k][3] : '#141414', bd: on ? PAL[k][2] : '#E2E1DC',
-        onClick: () => { if (next) this.setRsvp(next.id, k); this.setState({ rsvpEditing: false }); } };
+        onClick: () => { if (next) this.setRsvp(next.id, k); this.setState({ rsvpEditing: false, rosterOpen: false }); } };
     });
     const rsvpCollapsed = !!(me && myStatus && !st.rsvpEditing);
-    const rosterOpen = st.rosterOpen == null ? !mob : st.rosterOpen;
+    // 명단: 내가 이미 투표했으면(또는 휴대폰이면) 접힌 채로 시작, 투표 버튼을 누르면 접힘. '명단 보기'로 다시 펼친다
+    const rosterOpen = st.rosterOpen == null ? !mob && !myStatus : st.rosterOpen;
     const chip = (m, k) => {
       const p = k ? PAL[k] : ['#FFFFFF', '#5F5F5F'];
       return m === me ? { name: m.name, bg: '#141414', fg: '#FFFFFF', weight: 800, bd: '#141414', cursor: 'default' }
