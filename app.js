@@ -170,6 +170,20 @@ const fmtSec = n => { const h = Math.floor(n / 3600), m = Math.floor(n / 60) % 6
 function clipsText(clips) {
   return (clips || []).map(c => [c.label + ' https://youtu.be/' + c.v].concat((c.marks || []).map(k => fmtSec(k.t) + (k.e != null ? ' ~ ' + fmtSec(k.e) : '') + ' ' + k.l)).join('\n')).join('\n\n');
 }
+// 장면 종류: 설명 문구로 나눈다(득점·실점·위기·찬스·기타). 타임라인 점 색과 목록 배지에 쓴다.
+const KINDS = {
+  goal: { name: '득점', c: '#D92D20', z: 5, sz: 18 }, lost: { name: '실점', c: '#141414', z: 4, sz: 18 },
+  risk: { name: '위기', c: '#E8890C', z: 3, sz: 14 }, chance: { name: '찬스', c: '#1A66D2', z: 2, sz: 14 }, etc: { name: '기타', c: '#B5B4AE', z: 1, sz: 10 }
+};
+function markKind(l) {
+  const s = String(l || '');
+  if (/득점/.test(s) && !/실패|무산|찬스/.test(s)) return 'goal';
+  if (/실점/.test(s) && !/위기/.test(s)) return 'lost';
+  if (/허용|위기|슈퍼세이브/.test(s)) return 'risk';
+  if (/슈팅|찬스|시퀀스|PK|역습|크로스|침투|헤더|코너|프리킥|오버래핑/i.test(s)) return 'chance';
+  return 'etc';
+}
+window.markKind = markKind;
 window.parseQuarterLog = parseQuarterLog;
 window.parseClips = parseClips;
 window.ytUrl = ytUrl;
@@ -297,7 +311,7 @@ class HwarangApp {
       schedView: 'upcoming', schedSel: undefined, schedForm: null, resultForm: null,
       memberPos: 'all', memberForm: null,
       recYear: null, recOpen: null, recAllAtt: false, recAllGoals: false,
-      vidOpen: null, vidSel: {},
+      vidOpen: null, vidSel: {}, vidKind: {}, vidList: {},
       isMobile: window.innerWidth < MOBILE_WIDTH
     };
   }
@@ -473,7 +487,11 @@ class HwarangApp {
     const result = T ? { qs: [], sc: T.sc, qn: T.qn, our, their, at: Date.now(), by: this.state.me || null }
       : { qs: p.qs.map(q => ({ our: q.our, their: q.their, sc: q.sc })), our, their, at: Date.now(), by: this.state.me || null };
     if (video) result.video = video;
-    if (pc.clips.length) result.clips = pc.clips;
+    if (pc.clips.length) {
+      // 장면 표에는 영상 길이가 없으니, 같은 영상의 기존 길이(d)를 이어 붙인다
+      const old = (((this.schedules || []).find(x => x.id === f.id) || {}).result || {}).clips || [];
+      result.clips = pc.clips.map(c => { const o = old.find(x => x && x.v === c.v); return o && o.d ? { ...c, d: o.d } : c; });
+    }
     this.db.collection('hw_schedules').doc(f.id).update({ result, updatedAt: Date.now() })
       .then(() => this.setState({ resultForm: null, schedSel: f.id }))
       .catch(() => this.setState({ resultForm: { ...next, saving: false, error: '저장하지 못했어요. 잠시 후 다시 눌러 주세요.' } }));
@@ -943,6 +961,17 @@ class HwarangApp {
         : yp.v ? 'https://www.youtube.com/embed/' + yp.v + '?' + opts
         : 'https://www.youtube.com/embed/videoseries?list=' + yp.list + '&' + opts;
       const pick = (i, t) => () => this.setState({ vidSel: { ...st.vidSel, [s.id]: { i, t, n: Date.now() } } });
+      // 쿼터 버튼 점수: 이름의 숫자(1쿼터·2Q)로 쿼터를 찾고, 없으면 영상 수와 쿼터 수가 같을 때 순서대로
+      const qs = Array.isArray(r.qs) ? r.qs : [];
+      const qOf = (c, i) => { const m = /(\d+)\s*(쿼터|Q)/i.exec(c.label || ''); const k = m ? Number(m[1]) - 1 : clips.length === qs.length ? i : -1; return qs[k] || null; };
+      const kind = (st.vidKind || {})[s.id] || 'all', listOpen = !!(st.vidList || {})[s.id];
+      const setKind = k => () => this.setState({ vidKind: { ...st.vidKind, [s.id]: k }, vidList: { ...st.vidList, [s.id]: true } });
+      const marks = clip ? (clip.marks || []).map(k => ({ ...k, kd: markKind(k.l) })) : [];
+      const dur = clip && clip.d ? clip.d : Math.max(60, ...marks.map(k => (k.e || k.t) + 60));
+      const pct = x => Math.min(100, Math.max(0, x / dur * 100)).toFixed(2) + '%';
+      const isSel = k => !!(sel.n && sel.t === k.t && sel.i === ci);
+      const counts = {}; marks.forEach(k => { counts[k.kd] = (counts[k.kd] || 0) + 1; });
+      const shown = kind === 'all' ? marks : marks.filter(k => k.kd === kind);
       return {
         id: s.id, date: p.md, dow: p.dow, title: matchLabel(s) || s.venue || '', venue: s.venue || '',
         score: r.our + ' : ' + r.their, label: lab,
@@ -950,9 +979,24 @@ class HwarangApp {
         lbg: lab === '승' ? '#C71F10' : lab === '패' ? '#6B6B66' : '#D8C07A', lfg: lab === '무' ? '#3D2F08' : '#FFFFFF',
         src, slotKey: src + '#' + sel.n,
         hasChips: clips.length > 1, chipCols: 'repeat(' + Math.min(clips.length, 6) + ', minmax(0,1fr))',
-        chips: clips.map((c, i) => ({ label: c.label, onClick: pick(i, 0), bg: i === ci ? '#141414' : '#FFFFFF', fg: i === ci ? '#FFFFFF' : '#141414', bd: i === ci ? '#141414' : '#E2E1DC' })),
-        clipLabel: clip ? clip.label + ' 주요 장면' : '', hasMarks: !!(clip && clip.marks && clip.marks.length),
-        marks: clip ? (clip.marks || []).map(k => ({ time: fmtSec(k.t) + (k.e != null ? '~' + fmtSec(k.e) : ''), label: k.l, onClick: pick(ci, k.t), bg: sel.n && sel.t === k.t && sel.i === ci ? '#FBE9E6' : 'transparent' })) : [],
+        chips: clips.map((c, i) => {
+          const q = qOf(c, i), on = i === ci;
+          return { label: c.label, onClick: pick(i, 0), bg: on ? '#141414' : '#FFFFFF', fg: on ? '#FFFFFF' : '#141414', bd: on ? '#141414' : '#E2E1DC',
+            hasQ: !!q, q: q ? q.our + ' : ' + q.their : '', qfg: q && q.our > q.their ? (on ? '#FF8A7A' : '#C71F10') : on ? '#BDBDB8' : '#8A8A85' };
+        }),
+        hasMarks: marks.length > 0, durText: fmtSec(dur),
+        dots: marks.map(k => {
+          const K = KINDS[k.kd], dim = kind !== 'all' && k.kd !== kind;
+          return { left: pct(k.t), z: isSel(k) ? 9 : K.z, sz: (isSel(k) ? K.sz + 4 : K.sz) + 'px', c: K.c, op: dim ? .2 : 1,
+            ring: isSel(k) ? '0 0 0 3px rgba(20,20,20,.25)' : 'none', hasRange: k.e != null, rw: k.e != null ? pct(k.e - k.t) : '0%',
+            tip: fmtSec(k.t) + ' ' + k.l, onClick: pick(ci, k.t) };
+        }),
+        kinds: [{ k: 'all', name: '전체', n: marks.length, c: '#141414' }].concat(['goal', 'lost', 'risk', 'chance', 'etc'].filter(k => counts[k]).map(k => ({ k, name: KINDS[k].name, n: counts[k], c: KINDS[k].c })))
+          .map(x => { const on = listOpen && kind === x.k; return { name: x.name, n: x.n, dot: x.c, hasDot: x.k !== 'all', bg: on ? '#141414' : '#F5F5F3', fg: on ? '#FFFFFF' : '#141414', onClick: setKind(x.k) }; }),
+        listOpen, listToggle: () => this.setState({ vidList: { ...st.vidList, [s.id]: !listOpen } }),
+        listBtn: listOpen ? '장면 목록 접기 ▲' : '장면 목록 ' + marks.length + '개 보기 ▼',
+        clipLabel: clip ? clip.label + (kind === 'all' ? ' 주요 장면' : ' · ' + KINDS[kind].name + ' ' + shown.length + '개') : '',
+        marks: shown.map(k => ({ time: fmtSec(k.t) + (k.e != null ? '~' + fmtSec(k.e) : ''), label: k.l, kname: KINDS[k.kd].name, kc: KINDS[k.kd].c, onClick: pick(ci, k.t), bg: isSel(k) ? '#FBE9E6' : 'transparent' })),
         ytLink: ytUrl(r.video) || (clip ? 'https://www.youtube.com/watch?v=' + clip.v : '')
       };
     };
