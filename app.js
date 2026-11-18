@@ -311,7 +311,7 @@ class HwarangApp {
       schedView: 'upcoming', schedSel: undefined, schedForm: null, resultForm: null,
       memberPos: 'all', memberForm: null,
       recYear: null, recOpen: null, recAllAtt: false, recAllGoals: false,
-      vidOpen: null, vidSel: {}, vidKind: {}, vidList: {},
+      vidOpen: null, vidSel: {}, vidKind: {}, vidList: {}, vidAn: {},
       isMobile: window.innerWidth < MOBILE_WIDTH
     };
   }
@@ -488,9 +488,9 @@ class HwarangApp {
       : { qs: p.qs.map(q => ({ our: q.our, their: q.their, sc: q.sc })), our, their, at: Date.now(), by: this.state.me || null };
     if (video) result.video = video;
     if (pc.clips.length) {
-      // 장면 표에는 영상 길이가 없으니, 같은 영상의 기존 길이(d)를 이어 붙인다
+      // 장면 표에는 영상 길이·분석 데이터가 없으니, 같은 영상의 기존 길이(d)와 분석(an)을 이어 붙인다
       const old = (((this.schedules || []).find(x => x.id === f.id) || {}).result || {}).clips || [];
-      result.clips = pc.clips.map(c => { const o = old.find(x => x && x.v === c.v); return o && o.d ? { ...c, d: o.d } : c; });
+      result.clips = pc.clips.map(c => { const o = old.find(x => x && x.v === c.v) || {}; const keep = {}; if (o.d) keep.d = o.d; if (o.an) keep.an = o.an; return { ...c, ...keep }; });
     }
     this.db.collection('hw_schedules').doc(f.id).update({ result, updatedAt: Date.now() })
       .then(() => this.setState({ resultForm: null, schedSel: f.id }))
@@ -550,8 +550,40 @@ class HwarangApp {
       fr.setAttribute('allowfullscreen', '');
       fr.style.cssText = 'width:100%; height:100%; border:0; display:block;';
       host.appendChild(fr);
+      // 분석 박스(재생 위치에 맞춰 바뀜). 누를 일이 없으니 영상 조작을 막지 않게 pointer-events 끔
+      const ov = document.createElement('div');
+      ov.style.cssText = 'position:absolute; left:3%; top:4%; width:21em; background:rgba(10,10,10,.62); border-radius:.8em; padding:.75em .9em; color:#fff; display:none; flex-direction:column; gap:.4em; pointer-events:none; line-height:1.3;';
+      ov.innerHTML = '<div data-a="fold" title="접기" style="font-weight:800; display:flex; align-items:center; gap:.45em; cursor:pointer; pointer-events:auto; margin:-.3em -.3em 0; padding:.3em;"><span style="display:block; width:.8em; height:.8em; border-radius:50%; background:#C71F10; box-shadow:0 0 0 2px rgba(255,255,255,.85);"></span>경기 흐름 · 최근 1분</div>'
+        + '<div style="position:relative; height:.65em; border-radius:.33em; margin-top:.55em; background:linear-gradient(90deg,#8E8D88 0 50%,#C71F10 50% 100%);"><div style="position:absolute; left:50%; top:-.25em; bottom:-.25em; width:2px; background:rgba(255,255,255,.7);"></div><div data-a="nd" style="position:absolute; top:-.6em; width:0; height:0; margin-left:-.5em; border-left:.5em solid transparent; border-right:.5em solid transparent; border-top:.65em solid #fff; transition:left .3s linear;"></div></div>'
+        + '<div style="display:flex; justify-content:space-between; font-size:.88em; opacity:.8;"><span>우리 진영 쪽</span><span>상대 진영 쪽</span></div>'
+        + '<div style="display:flex; justify-content:space-between;"><span>상대 진영 누적</span><b data-a="cum"></b></div>'
+        + '<div style="display:flex; justify-content:space-between;"><span>공격 전개</span><b data-a="ent"></b></div>'
+        + '<div data-a="sc" style="font-weight:800; font-size:1.15em;"></div>'
+        + '<div style="font-size:.82em; opacity:.65;">카메라가 공을 따라간 방향 기준</div>';
+      host.appendChild(ov);
+      // 접힌 상태: 점 단추만. 점을 누르면 접히고, 단추를 누르면 펴짐(브라우저에 기억)
+      const pill = document.createElement('div');
+      pill.title = '경기 흐름 펴기';
+      pill.style.cssText = 'position:absolute; left:3%; top:4%; display:none; align-items:center; gap:.45em; padding:.45em .8em; border-radius:999px; background:rgba(10,10,10,.62); color:#fff; font-weight:800; cursor:pointer;';
+      pill.innerHTML = '<span style="display:block; width:.8em; height:.8em; border-radius:50%; background:#C71F10; box-shadow:0 0 0 2px rgba(255,255,255,.85);"></span>경기 흐름';
+      host.appendChild(pill);
+      try { this._ovFold = localStorage.getItem('hw_ov_fold') === '1'; } catch (e) { this._ovFold = false; }
+      const setFold = v => { this._ovFold = v; try { localStorage.setItem('hw_ov_fold', v ? '1' : '0'); } catch (e) {} this.showAnalysisBox(); };
+      ov.querySelector('[data-a="fold"]').addEventListener('click', () => setFold(true));
+      pill.addEventListener('click', () => setFold(false));
+      const bn = document.createElement('div');
+      bn.style.cssText = 'position:absolute; left:50%; top:9%; transform:translateX(-50%); padding:.3em .9em; border-radius:.45em; font-size:2.4em; font-weight:800; color:#fff; white-space:nowrap; display:none; pointer-events:none;';
+      host.appendChild(bn);
       document.body.appendChild(host);
-      this._yt = { host, fr, key: '' };
+      this._yt = { host, fr, ov, bn, pill, key: '' };
+      // 유튜브 플레이어에 재생 위치를 알려 달라고 하고(listening), 오는 위치(infoDelivery)로 박스를 다시 그린다
+      fr.addEventListener('load', () => { try { fr.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), 'https://www.youtube.com'); } catch (e) {} });
+      window.addEventListener('message', e => {
+        if (e.origin !== 'https://www.youtube.com' || e.source !== fr.contentWindow) return;
+        let d; try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (err) { return; }
+        const ct = d && d.info && d.info.currentTime;
+        if (typeof ct === 'number') this.drawAnalysis(ct);
+      });
       // 크기가 바뀌면 다음 프레임에 한 번만 다시 맞춘다(같은 프레임에서 되풀이되지 않게)
       const again = () => { if (this._ytRaf) return; this._ytRaf = requestAnimationFrame(() => { this._ytRaf = 0; this.placePlayer(); }); };
       window.addEventListener('resize', again);
@@ -564,12 +596,41 @@ class HwarangApp {
       return;
     }
     const key = slot.dataset.key || slot.dataset.src;
-    if (y.key !== key) { y.fr.src = slot.dataset.src; y.key = key; }
+    if (y.key !== key) {
+      y.fr.src = slot.dataset.src; y.key = key;
+      y.info = (this._anMap || {})[slot.dataset.src] || null;
+      this.showAnalysisBox();
+      if (y.info) this.drawAnalysis(y.info.t0); else y.bn.style.display = 'none';
+    }
     const r = slot.getBoundingClientRect();
     const pos = [Math.round(r.top + window.scrollY), Math.round(r.left + window.scrollX), Math.round(r.width), Math.round(r.height)];
     if (y.host.style.display === 'block' && y.pos === pos.join()) return;
     y.pos = pos.join();
     Object.assign(y.host.style, { display: 'block', top: pos[0] + 'px', left: pos[1] + 'px', width: pos[2] + 'px', height: pos[3] + 'px' });
+    y.host.style.fontSize = Math.max(9, Math.min(13, pos[2] / 48)).toFixed(1) + 'px';   // 박스 글자는 영상 폭에 맞춰
+  }
+  // 분석 박스 보이기: 분석 없는 영상이면 둘 다 숨김, 있으면 접힘 상태에 따라 박스 또는 점 단추
+  showAnalysisBox() {
+    const y = this._yt; if (!y) return;
+    const on = !!y.info;
+    y.ov.style.display = on && !this._ovFold ? 'flex' : 'none';
+    y.pill.style.display = on && this._ovFold ? 'flex' : 'none';
+  }
+  // 재생 위치 t초의 분석 박스·골 배너
+  drawAnalysis(t) {
+    const y = this._yt, info = y && y.info;
+    if (!info) return;
+    const an = info.an, i = Math.max(0, Math.min(an.f.length - 1, Math.floor(t / an.s)));
+    const q = k => y.ov.querySelector('[data-a="' + k + '"]');
+    q('nd').style.left = an.f[i] + '%';
+    q('cum').textContent = an.c[i] + '%';
+    let ne = 0; for (let k = 0; k < (an.e || []).length; k += 2) if (an.e[k] <= t) ne++;
+    q('ent').textContent = ne + '회';
+    const us = info.goals.filter(g => g.k === 'goal' && g.t <= t).length, th = info.goals.filter(g => g.k === 'lost' && g.t <= t).length;
+    q('sc').textContent = '화랑 ' + us + ' : ' + th + ' 상대';
+    const g = info.goals.find(g => g.t <= t && t < g.t + 6);
+    if (g) { y.bn.textContent = g.k === 'goal' ? '골! 화랑' : '실점'; y.bn.style.background = g.k === 'goal' ? 'rgba(199,31,16,.92)' : 'rgba(20,20,20,.9)'; y.bn.style.display = 'block'; }
+    else y.bn.style.display = 'none';
   }
   mapAfterRender() {
     const slot = el('venueMap');
@@ -956,7 +1017,7 @@ class HwarangApp {
       const sel = (st.vidSel || {})[s.id] || { i: 0, t: 0, n: 0 };
       const ci = Math.min(sel.i, Math.max(0, clips.length - 1)), clip = clips[ci];
       const yp = ytParts(r.video) || {};
-      const opts = 'playsinline=1&rel=0' + (sel.n ? '&autoplay=1' : '') + (sel.t ? '&start=' + sel.t : '');
+      const opts = 'playsinline=1&rel=0&enablejsapi=1&origin=' + encodeURIComponent(location.origin) + (sel.n ? '&autoplay=1' : '') + (sel.t ? '&start=' + sel.t : '');
       const src = clip ? 'https://www.youtube.com/embed/' + clip.v + '?' + opts
         : yp.v ? 'https://www.youtube.com/embed/' + yp.v + '?' + opts
         : 'https://www.youtube.com/embed/videoseries?list=' + yp.list + '&' + opts;
@@ -972,6 +1033,20 @@ class HwarangApp {
       const isSel = k => !!(sel.n && sel.t === k.t && sel.i === ci);
       const counts = {}; marks.forEach(k => { counts[k.kd] = (counts[k.kd] || 0) + 1; });
       const shown = kind === 'all' ? marks : marks.filter(k => k.kd === kind);
+      // 쿼터 분석(카메라 방향으로 잰 진영·공격 전개, result.clips[i].an). 영상 위 박스는 placePlayer가 재생 위치에 맞춰 그린다.
+      const an = clip && clip.an && Array.isArray(clip.an.f) && clip.an.f.length ? clip.an : null;
+      const anOpen = !!(st.vidAn || {})[s.id];
+      const goalMarks = marks.filter(k => k.kd === 'goal' || k.kd === 'lost').map(k => ({ t: Number(k.t), k: k.kd }));
+      let anUp = '', anDn = '';
+      if (an) {
+        const X = i => Math.min(1000, i * an.s / dur * 1000).toFixed(1), Y = v => 46 - v / 100 * 46;
+        anUp = 'M0 23'; anDn = 'M0 23';
+        an.f.forEach((v, i) => { anUp += ' L' + X(i) + ' ' + Math.min(23, Y(v)).toFixed(1); anDn += ' L' + X(i) + ' ' + Math.max(23, Y(v)).toFixed(1); });
+        const xe = X(an.f.length - 1);
+        anUp += ' L' + xe + ' 23 Z'; anDn += ' L' + xe + ' 23 Z';
+        (this._anMap || (this._anMap = {}))[src] = { an, goals: goalMarks, t0: sel.t || 0 };
+      }
+      const anOpp = an ? Number(an.opp) : 0;
       return {
         id: s.id, date: p.md, dow: p.dow, title: matchLabel(s) || s.venue || '', venue: s.venue || '',
         score: r.our + ' : ' + r.their, label: lab,
@@ -997,7 +1072,13 @@ class HwarangApp {
         listBtn: listOpen ? '장면 목록 접기 ▲' : '장면 목록 ' + marks.length + '개 보기 ▼',
         clipLabel: clip ? clip.label + (kind === 'all' ? ' 주요 장면' : ' · ' + KINDS[kind].name + ' ' + shown.length + '개') : '',
         marks: shown.map(k => ({ time: fmtSec(k.t) + (k.e != null ? '~' + fmtSec(k.e) : ''), label: k.l, kname: KINDS[k.kd].name, kc: KINDS[k.kd].c, onClick: pick(ci, k.t), bg: isSel(k) ? '#FBE9E6' : 'transparent' })),
-        ytLink: ytUrl(r.video) || (clip ? 'https://www.youtube.com/watch?v=' + clip.v : '')
+        ytLink: ytUrl(r.video) || (clip ? 'https://www.youtube.com/watch?v=' + clip.v : ''),
+        hasAn: !!an, anOpen, anToggle: () => this.setState({ vidAn: { ...st.vidAn, [s.id]: !anOpen } }),
+        anBtn: anOpen ? '흐름 분석 접기 ▲' : (clip ? clip.label + ' ' : '') + '흐름 분석 보기 ▼',
+        anUp, anDn, anGoals: goalMarks.map(g => ({ x: Math.min(1000, g.t / dur * 1000).toFixed(1), c: g.k === 'goal' ? '#D92D20' : '#141414' })),
+        anTitle: (clip ? clip.label + ' ' : '') + '분석', anOwnW: (100 - anOpp) + '%', anOppW: anOpp + '%',
+        anOwnTxt: '우리 진영 ' + Math.round(100 - anOpp) + '%', anOppTxt: '상대 진영 ' + Math.round(anOpp) + '%',
+        anEnt: an ? an.ent + '회' : '', anAvg: an ? an.avg + '초' : '', anOppTime: an ? fmtSec(Math.round(dur * anOpp / 100)) : ''
       };
     };
     const vidOpenId = st.vidOpen === undefined || st.vidOpen === null ? (vidGames[0] && vidGames[0].id) : st.vidOpen;
