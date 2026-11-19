@@ -1036,7 +1036,10 @@ class HwarangApp {
       // 쿼터 분석(카메라 방향으로 잰 진영·공격 전개, result.clips[i].an). 영상 위 박스는 placePlayer가 재생 위치에 맞춰 그린다.
       const an = clip && clip.an && Array.isArray(clip.an.f) && clip.an.f.length ? clip.an : null;
       const anOpen = !!(st.vidAn || {})[s.id];
-      const goalMarks = marks.filter(k => k.kd === 'goal' || k.kd === 'lost').map(k => ({ t: Number(k.t), k: k.kd }));
+      // 골 시각: an.g([[초, 'goal'|'lost'], ...])가 있으면 그걸 씀 — 장면 표시(marks)는 다시 보기용이라 골보다 몇 초 앞에서 시작함
+      const goalMarks = an && Array.isArray(an.g)
+        ? an.g.map(([t, k]) => ({ t: Number(t), k }))
+        : marks.filter(k => k.kd === 'goal' || k.kd === 'lost').map(k => ({ t: Number(k.t), k: k.kd }));
       let anUp = '', anDn = '';
       if (an) {
         const X = i => Math.min(1000, i * an.s / dur * 1000).toFixed(1), Y = v => 46 - v / 100 * 46;
